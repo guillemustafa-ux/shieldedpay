@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ShieldedPay — Privacy Pool con proving ZK en el browser</title>
+    <!--
+      snarkjs cargado como script global (window.snarkjs). Ver vite.config.ts:
+      no se empaqueta como módulo ESM porque asume globals de Node. El archivo
+      vive en public/snarkjs.min.js (copiado de node_modules/snarkjs/build).
+    -->
+    <script src="/snarkjs.min.js"></script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

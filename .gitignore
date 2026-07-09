@@ -14,6 +14,9 @@ circuits/build/
 *.r1cs
 *.wtns
 # El verifier generado (WithdrawVerifier.sol) SÍ se versiona: es el contrato.
+# Excepción: el proving key de la dApp SÍ se versiona — Vercel y el proving en
+# el browser lo necesitan (9.6MB, aceptable; mantiene el repo autocontenido).
+!frontend/dapp/public/zk/withdraw_final.zkey
 
 # Binario circom descargado (iden3/circom releases), no es código fuente
 .bin/

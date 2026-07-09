@@ -4,6 +4,17 @@ Registro de corridas, decisiones autónomas y bloqueos. Lo más nuevo arriba.
 
 ---
 
+## 2026-07-09 — D4: dApp con proving en el browser — COMPLETA, auditada
+
+- **dApp (Sonnet):** `frontend/dapp/` Vite+React+TS+Tailwind v4+ethers v6. Pestañas Depositar (genera nota aleatoria → commitment → deposit) y Retirar (pega nota → reconstruye árbol de eventos Deposit → **genera la prueba Groth16 EN EL BROWSER** → withdraw). Diferencial #3 del proyecto.
+- **snarkjs en Vite:** cargado como script global (`window.snarkjs` desde `public/snarkjs.min.js`) porque no bundlea como ESM; circomlibjs sí como módulo con `vite-plugin-node-polyfills` (resuelve builtins de Node que romperían el proving en runtime).
+- **Verificación:** `npm run build` exit 0; `npm run smoke` (script `scripts/smokeProof.mjs` que importa vía tsx el MISMO código de la dApp — merkleTree.ts + zk.ts — y genera+verifica una prueba con la wasm/zkey reales) → **PROOF OK**. La raíz del smoke = `19836...286003`, IDÉNTICA a la de D2/D3 → el camino de proving de la dApp es correcto bit-a-bit. Auditoría Fable de `zk.ts`: orden de las 6 señales correcto, addressToField correcto, exportSolidityCallData maneja G2.
+- **Decisión Fable — zkey:** el proving en browser necesita la `withdraw_final.zkey` (9.6MB) servida por Vercel. La versioné con una excepción puntual en `.gitignore` (`!frontend/dapp/public/zk/withdraw_final.zkey`) en vez de CDN externo (más autocontenido/reproducible). Carpeta `public/zk/` = 12MB.
+- **Addresses post-deploy:** `src/config.ts` lee `VITE_POOL_ADDRESS`/`VITE_ASP_ADDRESS` de env con fallback placeholder + banner en UI. Se completan en Vercel tras el deploy de D3 — sin tocar código.
+- **Simplificación de demo (documentada en código y UI):** el ASP incluye todos los depósitos → associationRoot==root; el mecanismo de exclusión vive en los tests de contratos. Honesto, no simula compliance falso.
+- **Pendiente de validación:** proving en un browser real (MetaMask+Sepolia) — no verificable en entorno headless; la evidencia objetiva es el smoke test + el polyfill que cubre el único punto de ruptura en runtime.
+- Commit D4: en esta corrida.
+
 ## 2026-07-09 — D3: Fase B parte 2 (contratos on-chain del pool) — COMPLETA, auditada
 
 - **Contratos (Sonnet, diseño Fable):** `src/PrivacyPool.sol` (deposit denominación fija + withdraw con verificación ZK), `src/ASP.sol` (Ownable, publica raíces del set limpio), `src/MerkleTreeWithHistory.sol` (árbol incremental Poseidon, port de Tornado), interfaces `IVerifier/IHasher/IASP`.
