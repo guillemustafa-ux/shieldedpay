@@ -1,0 +1,18 @@
+{
+  "name": "shieldedpay-stealth",
+  "version": "1.0.0",
+  "description": "Derivacion off-chain de stealth addresses (ERC-5564 scheme 1, secp256k1) para ShieldedPay Fase A",
+  "type": "module",
+  "main": "stealth.js",
+  "scripts": {
+    "demo": "node demo.js",
+    "test": "node --test"
+  },
+  "keywords": ["erc5564", "erc6538", "stealth-address", "privacy"],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@noble/hashes": "^2.2.0",
+    "@noble/secp256k1": "^3.1.0"
+  }
+}
