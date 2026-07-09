@@ -4,6 +4,21 @@ Registro de corridas, decisiones autónomas y bloqueos. Lo más nuevo arriba.
 
 ---
 
+## 2026-07-09 — D3: Fase B parte 2 (contratos on-chain del pool) — COMPLETA, auditada
+
+- **Contratos (Sonnet, diseño Fable):** `src/PrivacyPool.sol` (deposit denominación fija + withdraw con verificación ZK), `src/ASP.sol` (Ownable, publica raíces del set limpio), `src/MerkleTreeWithHistory.sol` (árbol incremental Poseidon, port de Tornado), interfaces `IVerifier/IHasher/IASP`.
+- **Poseidon on-chain:** bytecode generado con circomlibjs `poseidonContract.createCode(2)` (el MISMO Poseidon del circuito/harness JS), deployado desde bytecode con `create` assembly (patrón Tornado). Los 21 `zeros[0..20]` hardcodeados = `computeZeros(20)` del harness.
+- **Tests: 36/36 verdes** (10 del pool + 23 Fase A + 3 invariant). El cross-check `test_MerkleRoot_MatchesJsHarness` PASA: raíz on-chain == JS = `19836605508004949827567185581954422785219418104893669681374008323357588286003`. `test_Withdraw_ValidProof_PaysRecipient` verifica una **prueba Groth16 REAL** on-chain. Cubiertos: double-spend, prueba inválida, association-root-no-publicada (corazón del compliance), root de estado desconocida, fee>denominación.
+- **Fixtures committeados** (CI sin la .zkey de 9.6MB): `test/fixtures/poseidonBytecode.txt` (19KB) + `test/fixtures/withdraw_valid.json` (2KB, prueba real vía `groth16.exportSolidityCallData`). Generadores: `circuits/scripts/genPoseidon.js`, `genWithdrawFixture.js`.
+- **Deploy script:** `script/DeployPool.s.sol` (estilo B, dry-run sin revert).
+- **Auditoría Fable:**
+  - ✓ CEI + nonReentrant en withdraw (marca nullifier antes de transferir); binding de prueba evita robo por front-run.
+  - ✓ Orden de las 6 señales públicas correcto `[root, associationRoot, nullifierHash, recipient, relayer, fee]`; recipient/relayer como field elements.
+  - **Fix Fable:** saqué `ffi = true` de foundry.toml (ningún test usa vm.ffi; en repo público es señal de alarma innecesaria). Quedó solo `fs_permissions` de lectura. Re-testeado OK.
+  - **Limitación a documentar en SECURITY.md (D5):** retiro con `fee>0` y `relayer==0` deja el `fee` atrapado en el contrato. No es vuln (la prueba liga los valores, es error deliberado del usuario) e iguala/supera el comportamiento del propio Tornado. Se documenta, no se agrega código.
+- **Fase A y circuito intactos** (git status verificado).
+- Commit D3: en esta corrida.
+
 ## 2026-07-09 — D0: Andamiaje
 
 - `git init` en `C:\Users\Cript\shieldedpay` (sin remote — push público requiere OK de Guille).

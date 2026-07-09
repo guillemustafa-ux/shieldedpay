@@ -4,6 +4,10 @@ out = "out"
 libs = ["lib"]
 solc = "0.8.24"
 
+# Permite a tests/scripts leer el bytecode del hasher Poseidon y el fixture de
+# prueba ZK desde test/fixtures/ (vm.readFile). Sólo lectura, sólo esa carpeta.
+fs_permissions = [{ access = "read", path = "./test/fixtures" }]
+
 # depth=50 (en vez del default ~500) para que los invariant tests corran en
 # segundos en CI, no minutos, sin perder la esencia (256 secuencias random
 # de hasta 50 llamadas c/u sobre los mismos actores fijos).
