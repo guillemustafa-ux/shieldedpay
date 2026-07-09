@@ -4,6 +4,17 @@ Registro de corridas, decisiones autónomas y bloqueos. Lo más nuevo arriba.
 
 ---
 
+## 2026-07-09 — D5: Documentación y posicionamiento — COMPLETA (código); pendiente solo el deploy
+
+- **Docs escritos por Fable** (posicionamiento = dominio de diseño, no mecánico), en inglés para alcance internacional de privacy-tech (mismo criterio que el README de botpass):
+  - `docs/THESIS.md` — el diferencial: mecanismo de association sets explicado, el falso dilema privacidad/compliance, tabla comparativa Tornado/Railgun/Privacy Pools/Aztec, mapeo a la narrativa 2026 (0xbow mainnet, Kohaku/EF, EIP-8182, PSE) con cifras, y sección honesta de "qué NO es".
+  - `SECURITY.md` — síntesis de auditorías: verificación realizada, modelo de confianza, revisión adversarial (double-spend, reentrancy, front-run, forja de membresía, field-range), y riesgos residuales documentados (ASP centralizado, footgun fee/relayer, tamaño del anonymity set, trusted setup).
+  - `README.md` — documento de venta: tabla de metadata con cifras REALES (36 tests Foundry + 4 de circuito, coverage núcleo 97–100%, 21735 constraints), diagrama ASCII de las 2 fases, tabla de contratos, sección de proving en browser, tabla de deployments (placeholders a completar post-deploy), quickstart, link a THESIS/SECURITY.
+- **Coverage real medido:** ASP/ERC5564/ERC6538/PrivacyPool 100% líneas, MerkleTree 97.18%. (El `Total 61%` de forge está diluido por el verifier autogenerado + archivos de test; se cita el per-contrato, honesto.)
+- **Slither NO corrido:** Python no está instalado en esta máquina (solo stub de Microsoft Store); instalarlo + solc-select sería un pozo (regla anti-loop). Documentado honestamente en SECURITY.md con el comando recomendado — no se fabrica output.
+- **Estado global:** D0–D5 completas a nivel código. Lo ÚNICO pendiente son las 2 acciones externas que requieren OK de Guille: deploy a Sepolia (Fase A + Fase B, contratos verificados en Etherscan) y deploy de la dApp a Vercel. Tras el deploy: completar la tabla de deployments del README + `VITE_POOL_ADDRESS`/`VITE_ASP_ADDRESS`. Push público al repo `guillemustafa-ux/shieldedpay` también requiere OK.
+- Commit D5: en esta corrida.
+
 ## 2026-07-09 — D4: dApp con proving en el browser — COMPLETA, auditada
 
 - **dApp (Sonnet):** `frontend/dapp/` Vite+React+TS+Tailwind v4+ethers v6. Pestañas Depositar (genera nota aleatoria → commitment → deposit) y Retirar (pega nota → reconstruye árbol de eventos Deposit → **genera la prueba Groth16 EN EL BROWSER** → withdraw). Diferencial #3 del proyecto.
