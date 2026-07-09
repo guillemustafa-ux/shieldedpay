@@ -15,5 +15,8 @@ circuits/build/
 *.wtns
 # El verifier generado (WithdrawVerifier.sol) SÍ se versiona: es el contrato.
 
+# Binario circom descargado (iden3/circom releases), no es código fuente
+.bin/
+
 # Secretos — NUNCA subir
 .env
