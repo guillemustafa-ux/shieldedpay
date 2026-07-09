@@ -1,0 +1,19 @@
+# Foundry
+out/
+cache/
+broadcast/
+# lib/ NO se ignora: forge la maneja como submódulos de git
+
+# Node
+node_modules/
+
+# ZK build artifacts (pesados / regenerables). Los .ptau NUNCA se suben.
+circuits/build/
+*.ptau
+*.zkey
+*.r1cs
+*.wtns
+# El verifier generado (WithdrawVerifier.sol) SÍ se versiona: es el contrato.
+
+# Secretos — NUNCA subir
+.env

@@ -1,0 +1,46 @@
+name: CI
+
+permissions: {}
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  check:
+    name: Foundry project
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+          submodules: recursive
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+
+      - name: Show Forge version
+        run: forge --version
+
+      # forge fmt --check no corre acá a propósito: este repo usa comentarios
+      # didácticos alineados a mano (columna a columna) para enseñar Solidity y ZK;
+      # forge fmt los desalinearía y colapsaría structs/eventos multilínea en
+      # una sola línea larga, empeorando la legibilidad. No es un descuido.
+
+      - name: Run Forge build
+        run: forge build --sizes
+
+      - name: Run Forge tests (unit + fuzz + invariant)
+        run: forge test -vvv
+
+      - name: Check gas snapshot
+        # Los invariant tests no reportan un número de gas fijo (reportan
+        # runs/calls/reverts), así que quedan afuera del check de snapshot.
+        # --tolerance 5 absorbe la variación normal de los tests fuzz.
+        run: forge snapshot --check --no-match-contract Invariant --tolerance 5
+
+      - name: Check coverage
+        run: forge coverage --report summary

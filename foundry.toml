@@ -1,0 +1,22 @@
+[profile.default]
+src = "src"
+out = "out"
+libs = ["lib"]
+solc = "0.8.24"
+
+# depth=50 (en vez del default ~500) para que los invariant tests corran en
+# segundos en CI, no minutos, sin perder la esencia (256 secuencias random
+# de hasta 50 llamadas c/u sobre los mismos actores fijos).
+[invariant]
+runs = 256
+depth = 50
+fail_on_revert = true
+
+# RPC de cada red, leído de variables de entorno (.env). Se usa con --rpc-url <red>
+[rpc_endpoints]
+sepolia = "${SEPOLIA_RPC_URL}"
+
+# Verificación de contratos. Con Etherscan API V2 una sola key sirve para todas
+# las redes (se enruta por chainid). Si usás keys separadas, cambiá el valor.
+[etherscan]
+sepolia = { key = "${ETHERSCAN_API_KEY}", chain = 11155111 }
