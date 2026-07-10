@@ -203,4 +203,17 @@ contract PrivacyPoolTest is Test {
         vm.expectRevert("el fee no puede superar la denominacion");
         pool.withdraw(pA, pB, pC, fxRoot, fxAssocRoot, fxNullifierHash, fxRecipient, fxRelayer, tooMuch);
     }
+
+    function test_Withdraw_RevertsIf_FeeWithoutRelayer() public {
+        _depositAll();
+        vm.prank(owner);
+        asp.publishAssociationRoot(fxAssocRoot);
+
+        // Estado válido (raíz y association root conocidas, nullifier fresco), pero
+        // fee > 0 con relayer == address(0): el guard revierte ANTES de verifyProof,
+        // así que no hace falta una prueba ZK ligada a este caso.
+        uint256 fee = DENOMINATION / 2;
+        vm.expectRevert(bytes("fee > 0 requiere un relayer"));
+        pool.withdraw(pA, pB, pC, fxRoot, fxAssocRoot, fxNullifierHash, fxRecipient, payable(address(0)), fee);
+    }
 }

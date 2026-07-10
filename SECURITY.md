@@ -26,6 +26,7 @@ Threats considered and how they are handled:
 - **Forging membership** → withdrawing a deposit that is not in the pool, or not in the clean association set, requires a valid Merkle path the attacker does not have; the proof does not close. The association-exclusion path is checked by `test_Withdraw_RevertsIf_AssociationRootNotPublished`.
 - **Stale / unknown roots** → the pool keeps a bounded circular history of recent state roots and only accepts a `root` within it (`isKnownRoot`); an arbitrary root is rejected (`test_Withdraw_RevertsIf_UnknownStateRoot`).
 - **Field-range abuse** → commitments are required to be `< FIELD_SIZE` on deposit; the generated verifier range-checks all public signals, rejecting out-of-field inputs.
+- **Fee stranded without a relayer** → a withdrawal with `fee > 0` and `relayer == address(0)` would leave the fee stuck in the contract. The pool rejects it up front (`require(relayer != address(0) || fee == 0)`), so the balance invariant holds universally. Checked by `test_Withdraw_RevertsIf_FeeWithoutRelayer`.
 
 ## Static analysis (Slither)
 
@@ -41,7 +42,6 @@ The generated verifier (`src/verifiers/WithdrawVerifier.sol`) is expected to rai
 ## Residual risks (known, accepted)
 
 - **Centralized ASP.** A single owner decides which association roots are valid. A malicious or compromised owner could refuse to include honest deposits (censorship) or publish a permissive set. Decentralizing the ASP (screening service or governance) is out of scope for this demonstration.
-- **Fee stranded on misconfiguration.** If a caller submits a withdrawal with `fee > 0` but `relayer == address(0)`, the `fee` portion is not forwarded and remains in the contract. This is not a theft vector (the proof binds these values, so it is a deliberate/mistaken caller choice) and matches or improves on Tornado Cash's handling, but it is a footgun. The dApp never constructs such a withdrawal; a production version should `require(relayer != address(0) || fee == 0)`.
 - **Anonymity set size.** Real privacy depends on many deposits, relayer usage, and defenses against timing/gas-metadata correlation. A demo pool with few deposits provides little practical anonymity regardless of the cryptography.
 - **Trusted setup assumption.** Groth16 soundness assumes the Powers of Tau ceremony had at least one honest participant. This repo relies on the well-known Hermez ceremony rather than proving that property itself.
 - **No upgrade path / no emergency stop.** The contracts are intentionally minimal; there is no pause or upgrade mechanism.

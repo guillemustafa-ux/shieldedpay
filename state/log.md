@@ -4,6 +4,14 @@ Registro de corridas, decisiones autónomas y bloqueos. Lo más nuevo arriba.
 
 ---
 
+## 2026-07-09 — Refuerzo A+B (diseño Fable / ejecución Sonnet) — auditado
+
+- **A — guard fee/relayer (hardening):** en `PrivacyPool.withdraw`, tras `fee <= denomination`, se agregó `require(relayer != address(0) || fee == 0, "fee > 0 requiere un relayer")`. Cierra el footgun documentado (fee atrapado si no hay relayer) → el invariante de balance vale universalmente. Test nuevo `test_Withdraw_RevertsIf_FeeWithoutRelayer`. **37/37 tests verdes** (era 36). Auditado por Fable: guard bien posicionado (antes de los checks de root/verify), ningún test previo roto.
+- **SECURITY.md actualizado por Fable:** el footgun pasó de "Residual risks" a "Adversarial review / manejado".
+- **B — scripts post-deploy one-shot:** `script/SeedDemo.s.sol` (siembra 3 depósitos de demo con notas deterministas PÚBLICAS (nullifier/secret = 1/11, 2/22, 3/33), commitment vía `hasher.poseidon`, y publica `getLastRoot` como association root → dApp demostrable en vivo SELF-SERVICE: un visitante retira con una nota de demo) + `script/PublishRoot.s.sol` (el owner del ASP publica la root vigente tras depósitos reales; modela el flujo operador del ASP). Ambos compilan.
+- **Post-deploy:** las 3 notas de demo van al README para que cualquiera pruebe el retiro en vivo. Correr `SeedDemo` requiere 3×denominación (0.03 ETH) de faucet en el deployer.
+- Commit refuerzo A+B: en esta corrida (solo dominio contratos/scripts/tests + SECURITY; frontend queda para el cierre del agente C).
+
 ## 2026-07-09 — D5: Documentación y posicionamiento — COMPLETA (código); pendiente solo el deploy
 
 - **Docs escritos por Fable** (posicionamiento = dominio de diseño, no mecánico), en inglés para alcance internacional de privacy-tech (mismo criterio que el README de botpass):

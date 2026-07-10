@@ -117,6 +117,9 @@ contract PrivacyPool is MerkleTreeWithHistory, ReentrancyGuard {
     ) external nonReentrant {
         require(!nullifierHashes[nullifierHash], "nota ya gastada");
         require(fee <= denomination, "el fee no puede superar la denominacion");
+        // Sin relayer, un fee > 0 quedaría atrapado en el contrato (no se reenvía
+        // a nadie): footgun que rompe el invariante de balance. Este guard lo cierra.
+        require(relayer != address(0) || fee == 0, "fee > 0 requiere un relayer");
         require(isKnownRoot(root), "raiz de estado desconocida");
         require(asp.isKnownAssociationRoot(associationRoot), "association root no publicada por el ASP");
 
