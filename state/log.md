@@ -4,6 +4,15 @@ Registro de corridas, decisiones autónomas y bloqueos. Lo más nuevo arriba.
 
 ---
 
+## 2026-07-10 — Fraud-proof slashing verificable (Layer 5 real del ASP) — diseño Fable / ejecución Sonnet, auditado
+
+- Contexto: ShieldedPay ya está DESPLEGADO y publicado (Sepolia, 6 contratos verificados, retiro ZK E2E real; ver README + memoria project_shieldedpay). Guille pidió "lo más pesado": convertir el slashing del ASPRegistry de stub de governance a **fraud proof verificable on-chain** (lo más difícil del diseño DECENTRALIZED-ASP, Layer 5).
+- **`src/lib/PoseidonMerkleLib.sol`** (nuevo) — recomputación on-chain del sparse Merkle root Poseidon, réplica 1:1 de `buildTree` del harness JS (21 zeros hardcodeados, valida hojas en el campo). **Cross-check duro:** `computeRoot([c0,c1,c2])` == la associationRoot del fixture, bit-a-bit → sirve de testigo en el fraud proof.
+- **`ASPRegistry.sol`** evolucionado: constructor toma `IHasher`; guarda `rootDataHash[aspId][root]`; `MIN_SET_SIZE=2`; `challengeIntegrity(aspId, root, set)` — verifica keccak(set)==dataHash, recomputa el root y si != publicado → slash (el ASP mintió sobre su propia root); `challengeDegenerate` — slashea sets < MIN_SET_SIZE (desanonimizan); `_slashByFraud` con **50% del stake al challenger** (bounty para watchtowers; retener el otro 50% mata el auto-slash colusivo), CEI + nonReentrant. Un ASP honesto es INSLASHEABLE; no se puede framear (keccak). `slash()` onlyOwner queda como backup de emergencia documentado.
+- **Verificación (auditada por Fable):** 62 tests verdes (54 + 8 de fraude). `_slashByFraud` con CEI estricto (slashed + stake=0 antes de transferir) y doble barrera de reentrancy. Gas snapshot regenerado (el CI del repo público corre `forge snapshot --check`).
+- **Futuro documentado** (DECENTRALIZED-ASP.md): data-withholding (negativo no probable on-chain → challenge-response de revelación) y fraud proof sucinto para sets grandes (hoy recomputa todo, O(n) Poseidon).
+- Commit local en esta corrida. **Push al repo público: pendiente OK de Guille** (repo ya es público).
+
 ## 2026-07-10 — Slice vertical: ASP registry multi-ASP (diseño Fable / ejecución Sonnet) — auditado
 
 - Guille pidió pasar de diseño a código: construir el ASP registry del DECENTRALIZED-ASP.md como slice vertical. Diseño Fable (spec cerrado), ejecución Sonnet. **Archivos nuevos, demo original INTACTO** (PrivacyPool.sol/ASP.sol sin tocar).
@@ -126,4 +135,4 @@ Registro de corridas, decisiones autónomas y bloqueos. Lo más nuevo arriba.
 
 ### ⏸ PAUSA (pedido de Guille). Para retomar: D3 (Fase B parte 2 — PrivacyPool.sol + ASP.sol integrando el verifier, tests on-chain de depósito/retiro/double-spend, deploy Sepolia con OK). El harness `circuits/test/merkleTree.js` se reutiliza para armar los árboles en los tests de Foundry (vía FFI o precomputando inputs). Ver PLAN.md.
 
-[META-STATUS] 2026-07-10 | ESTADO=EN_DESARROLLO | Build completo (Fase A stealth + Fase B privacy pool ZK), 13 commits, 54 tests Foundry + 4 circuito verdes, dApp con proving en browser (3 tabs) + docs (THESIS/SECURITY/ARCHITECTURE/DECENTRALIZED-ASP) + PoC vertical del ASP registry multi-ASP + reproducibilidad ZK. Falta SOLO deploy Sepolia+Vercel+push (espera .env de Guille — ver DEPLOY.md).
+[META-STATUS] 2026-07-10 | ESTADO=OPERATIVO | DESPLEGADO en Sepolia (6 contratos verificados + retiro ZK E2E real on-chain, tx citable) y repo PÚBLICO github.com/guillemustafa-ux/shieldedpay. 62 tests Foundry + 4 circuito verdes. Fase A stealth + Fase B privacy pool ZK + dApp proving en browser + docs (THESIS/SECURITY/ARCHITECTURE/DECENTRALIZED-ASP) + ASP registry multi-ASP con fraud-proof slashing (Layer 5 real). Falta SOLO dApp a Vercel (Guille) + push del último trabajo (fraud proof, pendiente OK).

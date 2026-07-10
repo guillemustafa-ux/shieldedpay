@@ -3,32 +3,56 @@ pragma solidity ^0.8.24;
 
 import {Test} from "forge-std/Test.sol";
 import {ASPRegistry} from "../src/ASPRegistry.sol";
+import {IHasher} from "../src/interfaces/IHasher.sol";
+import {PoseidonMerkleLib} from "../src/lib/PoseidonMerkleLib.sol";
+import {PoseidonDeployer} from "./utils/PoseidonDeployer.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
-/// @title ASPRegistry.t — tests del registry multi-ASP (Layer 3 + stub Layer 5)
+/// @title ASPRegistry.t — tests del registry multi-ASP (Layer 3 + Layer 5 fraud proof)
 /// @notice Cubre el ciclo de vida de un ASP: registro con stake, publicación de
-///         roots por-ASP (con su historial circular independiente), y el stub de
-///         slashing por governance. El invariante clave es que isKnownRoot
-///         DISCRIMINA por aspId: una root publicada por el ASP #1 no es válida
-///         para el ASP #2.
+///         roots por-ASP (con su historial circular independiente), el slashing
+///         por FRAUD PROOF verificable on-chain (Layer 5) y el slash de
+///         emergencia por governance (backup). El invariante clave de Layer 3 es
+///         que isKnownRoot DISCRIMINA por aspId. El corazón de Layer 5 es el
+///         cross-check: la recomputación on-chain del Merkle root de un set (misma
+///         lógica que el harness JS buildTree) coincide bit-a-bit con la root real
+///         del fixture, y sobre esa garantía se prueba fraude.
 contract ASPRegistryTest is Test {
     uint256 internal constant MIN_STAKE = 0.01 ether;
 
     ASPRegistry internal registry;
+    IHasher internal hasher;
 
     address internal governance = makeAddr("governance");
     address internal aspOwner1 = makeAddr("aspOwner1");
     address internal aspOwner2 = makeAddr("aspOwner2");
     address internal stranger = makeAddr("stranger");
+    address internal challenger = makeAddr("challenger");
 
     bytes32 internal constant POLICY = keccak256("policy-ofac-plus-ronin");
     string internal constant METADATA = "ipfs://policy1";
     bytes32 internal constant DATA_HASH = keccak256("set-data-availability");
 
+    // Set de asociación del fixture (los 3 primeros commitments) y su root real.
+    // El generador (circuits/scripts/genWithdrawFixture.js) arma la association
+    // root como buildTree([commitments[0], commitments[1], commitments[2]]).
+    uint256[] internal assocSet;
+    uint256 internal fxAssocRoot;
+
     function setUp() public {
-        registry = new ASPRegistry(MIN_STAKE, governance);
+        hasher = PoseidonDeployer.deploy(vm);
+        registry = new ASPRegistry(MIN_STAKE, governance, hasher);
         vm.deal(aspOwner1, 10 ether);
         vm.deal(aspOwner2, 10 ether);
+
+        // Cargamos el set de asociación del fixture para el cross-check y los
+        // fraud proofs (mismo fixture que PrivacyPool/PrivacyPoolMultiASP).
+        string memory json = vm.readFile("test/fixtures/withdraw_valid.json");
+        uint256[] memory commitments = vm.parseJsonUintArray(json, ".commitments");
+        fxAssocRoot = vm.parseJsonUint(json, ".associationRoot");
+        assocSet.push(commitments[0]);
+        assocSet.push(commitments[1]);
+        assocSet.push(commitments[2]);
     }
 
     // ---------------------------------------------------------------------
@@ -77,6 +101,7 @@ contract ASPRegistryTest is Test {
         (,,,,, uint256 latestRoot, bytes32 latestDataHash,) = registry.asps(1);
         assertEq(latestRoot, root, "latestRoot actualizada");
         assertEq(latestDataHash, DATA_HASH, "latestDataHash actualizado");
+        assertEq(registry.rootDataHash(1, root), DATA_HASH, "rootDataHash comprometido para esa root");
     }
 
     function test_PublishRoot_RevertsIf_NotOwner() public {
@@ -122,7 +147,7 @@ contract ASPRegistryTest is Test {
     }
 
     // ---------------------------------------------------------------------
-    // Slashing (stub de governance)
+    // Slashing de emergencia (governance backup)
     // ---------------------------------------------------------------------
 
     function test_Slash_MarksInactive() public {
@@ -172,5 +197,156 @@ contract ASPRegistryTest is Test {
         assertTrue(registry.isKnownRoot(2, root2), "root2 conocida para ASP 2");
         assertFalse(registry.isKnownRoot(2, root1), "root1 NO conocida para ASP 2");
         assertFalse(registry.isKnownRoot(1, root2), "root2 NO conocida para ASP 1");
+    }
+
+    // ---------------------------------------------------------------------
+    // Layer 5 — Cross-check: recomputación on-chain == root real del fixture
+    // ---------------------------------------------------------------------
+
+    /// @notice La recomputación on-chain del Merkle root del set del fixture da
+    ///         EXACTAMENTE la associationRoot del fixture. Esta es la garantía que
+    ///         hace verificable el fraud proof: la lógica de PoseidonMerkleLib
+    ///         replica buildTree (harness JS) bit-a-bit, así que si un ASP publica
+    ///         una root != Merkle(set) el contrato lo detecta con certeza.
+    function test_ComputeRoot_MatchesFixtureAssociationRoot() public view {
+        uint256 recomputed = PoseidonMerkleLib.computeRoot(assocSet, hasher);
+        assertEq(recomputed, fxAssocRoot, "root recomputada on-chain == associationRoot del fixture");
+    }
+
+    // ---------------------------------------------------------------------
+    // Layer 5 — Fraud proof de integridad
+    // ---------------------------------------------------------------------
+
+    /// @dev Registra un ASP y lo devuelve. `_dataHash` es el commitment del set.
+    function _registerAsp(address owner) internal returns (uint256 aspId) {
+        vm.prank(owner);
+        aspId = registry.register{value: MIN_STAKE}(POLICY, METADATA);
+    }
+
+    function test_ChallengeIntegrity_SlashesLyingAsp_AndRewardsChallenger() public {
+        uint256 aspId = _registerAsp(aspOwner1);
+
+        // El ASP MIENTE: publica una root que NO es Merkle(assocSet), pero se
+        // compromete (dataHash) al assocSet real.
+        uint256 lyingRoot = fxAssocRoot + 1;
+        bytes32 dataHash = keccak256(abi.encodePacked(assocSet));
+        vm.prank(aspOwner1);
+        registry.publishRoot(aspId, lyingRoot, dataHash);
+
+        uint256 expectedReward = (MIN_STAKE * registry.SLASH_REWARD_BPS()) / 10000;
+        assertEq(challenger.balance, 0, "challenger arranca sin balance");
+
+        vm.expectEmit(true, true, false, true, address(registry));
+        emit ASPRegistry.ASPSlashedByFraud(aspId, challenger, expectedReward, "integridad: root != Merkle(set)");
+
+        vm.prank(challenger);
+        registry.challengeIntegrity(aspId, lyingRoot, assocSet);
+
+        assertFalse(registry.isActive(aspId), "el ASP queda inactivo tras el slash");
+        assertEq(challenger.balance, expectedReward, "el challenger cobra 50% del stake");
+        (,,, uint256 stake, bool slashed,,,) = registry.asps(aspId);
+        assertTrue(slashed, "slashed == true");
+        assertEq(stake, 0, "stake zeroeado tras el slash");
+        // El resto del stake queda RETENIDO en el contrato (quemado de facto).
+        assertEq(address(registry).balance, MIN_STAKE - expectedReward, "la otra mitad queda retenida");
+    }
+
+    function test_ChallengeIntegrity_RevertsIf_HonestAsp() public {
+        uint256 aspId = _registerAsp(aspOwner1);
+
+        // ASP HONESTO: publica la root REAL (Merkle(assocSet)) y su dataHash.
+        bytes32 dataHash = keccak256(abi.encodePacked(assocSet));
+        vm.prank(aspOwner1);
+        registry.publishRoot(aspId, fxAssocRoot, dataHash);
+
+        vm.prank(challenger);
+        vm.expectRevert("sin fraude: la root corresponde al set");
+        registry.challengeIntegrity(aspId, fxAssocRoot, assocSet);
+
+        assertTrue(registry.isActive(aspId), "un ASP honesto NO es slasheable");
+    }
+
+    function test_ChallengeIntegrity_RevertsIf_SetMismatchesDataHash() public {
+        uint256 aspId = _registerAsp(aspOwner1);
+
+        uint256 lyingRoot = fxAssocRoot + 1;
+        bytes32 dataHash = keccak256(abi.encodePacked(assocSet));
+        vm.prank(aspOwner1);
+        registry.publishRoot(aspId, lyingRoot, dataHash);
+
+        // El challenger intenta framear con un set distinto (keccak != dataHash).
+        uint256[] memory fakeSet = new uint256[](2);
+        fakeSet[0] = 1;
+        fakeSet[1] = 2;
+
+        vm.prank(challenger);
+        vm.expectRevert("el set no matchea el dataHash comprometido");
+        registry.challengeIntegrity(aspId, lyingRoot, fakeSet);
+    }
+
+    function test_ChallengeIntegrity_RevertsIf_RootNotPublished() public {
+        uint256 aspId = _registerAsp(aspOwner1);
+        // No publicó ninguna root: rootDataHash == 0.
+        vm.prank(challenger);
+        vm.expectRevert("root no publicada por este ASP");
+        registry.challengeIntegrity(aspId, fxAssocRoot, assocSet);
+    }
+
+    function test_ChallengeIntegrity_RevertsIf_AlreadySlashed() public {
+        uint256 aspId = _registerAsp(aspOwner1);
+        uint256 lyingRoot = fxAssocRoot + 1;
+        bytes32 dataHash = keccak256(abi.encodePacked(assocSet));
+        vm.prank(aspOwner1);
+        registry.publishRoot(aspId, lyingRoot, dataHash);
+
+        vm.prank(challenger);
+        registry.challengeIntegrity(aspId, lyingRoot, assocSet);
+
+        // Segundo challenge sobre el mismo ASP ya slasheado: revierte.
+        vm.prank(stranger);
+        vm.expectRevert("ASP ya slashed");
+        registry.challengeIntegrity(aspId, lyingRoot, assocSet);
+    }
+
+    // ---------------------------------------------------------------------
+    // Layer 5 — Fraud proof de set degenerado
+    // ---------------------------------------------------------------------
+
+    function test_ChallengeDegenerate_SlashesSmallSet_AndRewardsChallenger() public {
+        uint256 aspId = _registerAsp(aspOwner1);
+
+        // Set degenerado de tamaño 1 (desanonimiza): un único commitment.
+        uint256[] memory tinySet = new uint256[](1);
+        tinySet[0] = assocSet[0];
+        uint256 degenRoot = PoseidonMerkleLib.computeRoot(tinySet, hasher);
+        bytes32 dataHash = keccak256(abi.encodePacked(tinySet));
+        vm.prank(aspOwner1);
+        registry.publishRoot(aspId, degenRoot, dataHash);
+
+        uint256 expectedReward = (MIN_STAKE * registry.SLASH_REWARD_BPS()) / 10000;
+
+        vm.expectEmit(true, true, false, true, address(registry));
+        emit ASPRegistry.ASPSlashedByFraud(aspId, challenger, expectedReward, "degenerado: set por debajo del minimo");
+
+        vm.prank(challenger);
+        registry.challengeDegenerate(aspId, degenRoot, tinySet);
+
+        assertFalse(registry.isActive(aspId), "ASP degenerado queda inactivo");
+        assertEq(challenger.balance, expectedReward, "challenger cobra la recompensa");
+    }
+
+    function test_ChallengeDegenerate_RevertsIf_SetMeetsMinimum() public {
+        uint256 aspId = _registerAsp(aspOwner1);
+
+        // assocSet tiene 3 elementos (>= MIN_SET_SIZE): no es degenerado.
+        bytes32 dataHash = keccak256(abi.encodePacked(assocSet));
+        vm.prank(aspOwner1);
+        registry.publishRoot(aspId, fxAssocRoot, dataHash);
+
+        vm.prank(challenger);
+        vm.expectRevert("sin fraude: el set cumple el tamano minimo");
+        registry.challengeDegenerate(aspId, fxAssocRoot, assocSet);
+
+        assertTrue(registry.isActive(aspId), "un ASP con set sano NO es slasheable");
     }
 }

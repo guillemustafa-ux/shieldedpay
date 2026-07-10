@@ -8,15 +8,29 @@
 > fully solved.
 
 This is a design blueprint — and a **vertical-slice proof-of-concept of Layer 3 (the
-multi-ASP registry) plus the Layer 5 slashing stub is implemented and tested**:
-`src/ASPRegistry.sol` (registration with stake, per-ASP circular root history,
-`isActive`/`isKnownRoot`, governance slashing) and `src/PrivacyPoolMultiASP.sol` (a
-pool that validates withdrawals against a user-selected ASP via the registry). The same
-real Groth16 withdrawal proof verifies against the multi-ASP pool exactly as against the
-single-ASP demo — confirming the decentralization touches *only* which roots the pool
-honors, never the circuit. See `test/ASPRegistry.t.sol` and `test/PrivacyPoolMultiASP.t.sol`.
-The layers marked "future" below (fraud-proof slashing, DA validation, minimum set size)
-are the honest remaining work.
+multi-ASP registry) plus Layer 5 accountability with a verifiable on-chain fraud proof is
+implemented and tested**: `src/ASPRegistry.sol` (registration with stake, per-ASP circular
+root history, `isActive`/`isKnownRoot`, and **fraud-proof slashing**) with
+`src/lib/PoseidonMerkleLib.sol` (on-chain sparse-Merkle recomputation mirroring the JS
+`buildTree` harness bit-for-bit) and `src/PrivacyPoolMultiASP.sol` (a pool that validates
+withdrawals against a user-selected ASP via the registry). The same real Groth16 withdrawal
+proof verifies against the multi-ASP pool exactly as against the single-ASP demo —
+confirming the decentralization touches *only* which roots the pool honors, never the
+circuit. See `test/ASPRegistry.t.sol` and `test/PrivacyPoolMultiASP.t.sol`.
+
+**What Layer 5 now enforces on-chain** (no trusted adjudicator): when an ASP publishes
+`(root, dataHash)` it commits to `dataHash = keccak256(abi.encodePacked(set))`. Anyone can
+prove fraud by supplying the `set`: `challengeIntegrity` recomputes the Poseidon-Merkle root
+of the set on-chain and slashes the ASP if it ≠ the published `root` (the ASP lied about its
+own root); `challengeDegenerate` slashes if the committed set is smaller than `MIN_SET_SIZE`
+(deanonymizing). An honest ASP (`root == Merkle(set)`, `dataHash == keccak(set)`) is
+**unslashable** — any challenge with the correct set recomputes the same root and reverts;
+a challenger supplying a set whose `keccak != dataHash` cannot frame anyone and reverts. The
+challenger earns 50% of the slashed stake as a bounty. The honestly-remaining future work
+is **data-withholding** (a *negative* — "the committed data is nowhere retrievable" — is not
+directly provable on-chain; it needs a challenge-response reveal protocol) and making the
+fraud proof succinct for large sets (the current version recomputes the whole root, O(n)
+Poseidon hashes: correct-by-construction but gas-heavy at production set sizes).
 
 ---
 
@@ -159,18 +173,39 @@ different products users can choose between.
 ### Layer 5 — Accountability: staking, slashing, reputation
 
 Registered ASPs post a **stake**. They can be slashed by on-chain-provable faults:
-- **Data withholding** — published a root whose `dataHash` content is unavailable / doesn't
-  match (provable by anyone who reconstructs and hashes).
-- **Rule violation** — the published set doesn't match the deterministic recomputation
-  from the declared rules + flag lists (Layer 1 makes this checkable; a fraud proof
-  submits the discrepancy).
+- **Integrity fraud** (IMPLEMENTED — `challengeIntegrity`) — the published `root` is not the
+  Poseidon-Merkle root of the set the ASP committed to via `dataHash`. Anyone supplies the
+  set; the contract recomputes the root on-chain (`PoseidonMerkleLib.computeRoot`, identical
+  to the JS `buildTree` harness) and slashes on mismatch. This is the "the published set is
+  wrong" fault made *provable*: the commitment `dataHash = keccak256(abi.encodePacked(set))`
+  pins the content, and the Merkle recomputation is deterministic.
+- **Degenerate set** (IMPLEMENTED — `challengeDegenerate`) — the committed set is smaller than
+  `MIN_SET_SIZE` (a size-1 set fully deanonymizes; `MIN_SET_SIZE = 2` is the conceptual floor,
+  raised much higher in production). Anyone supplies the set; the contract slashes on
+  `set.length < MIN_SET_SIZE`.
+- **Data withholding** (FUTURE) — published a `dataHash` whose content is *unavailable*. This
+  is a *negative* and cannot be proven directly on-chain (no contract can prove the
+  non-existence of data). It requires a **challenge-response reveal protocol**: a challenger
+  posts a bond demanding the preimage; the ASP must reveal the set on-chain within a window
+  or be slashed. Out of scope for this slice; the on-chain hook (`rootDataHash` commitment)
+  is already in place for it.
 - Censorship is harder to slash objectively (you can't prove intent), so it's handled by
   **exit**: users pick another ASP, and persistent censorship shows up as lost market
   share + reputation. Reputation = uptime, set freshness, stake, age — surfaced to users
   choosing an ASP.
 
-Slashing needs a fraud-proof adjudicator; the deterministic set construction (Layer 1)
-is what makes "the set is wrong" a *provable* statement rather than a matter of opinion.
+**Slash economics.** The challenger who submits a valid fraud proof receives
+`SLASH_REWARD_BPS = 50%` of the slashed stake; the remaining half is retained by the contract
+(effectively burned — there is no withdrawal path). Retaining (rather than fully paying out)
+the stake removes a grief/collusion vector: an ASP can't profitably self-slash with a
+fraudulent set through an accomplice challenger, since it recovers at most half of its own
+stake and never comes out ahead.
+
+**Cost note.** `challengeIntegrity` recomputes the *entire* Merkle root of the set on-chain
+(O(n) Poseidon hashes) — correct-by-construction and viable for the demo/test set sizes, but
+gas-heavy for production sets of thousands of leaves. A production fraud proof would instead
+submit a *succinct witness* of a single inconsistent branch rather than recompute everything;
+same guarantee, bounded cost. Documented as the honest scaling limit.
 
 ---
 
@@ -196,7 +231,9 @@ interface IASPRegistry {
     function isActive(uint256 aspId) external view returns (bool);      // registered & not slashed
     function publishRoot(uint256 aspId, uint256 root, bytes32 dataHash) external;
     function isKnownRoot(uint256 aspId, uint256 root) external view returns (bool); // within recent history
-    function slash(uint256 aspId, bytes calldata fraudProof) external;  // data-withholding / rule-violation
+    // Fraud proofs (implemented): supply the committed set; the contract verifies and slashes.
+    function challengeIntegrity(uint256 aspId, uint256 root, uint256[] calldata set) external;  // root != Merkle(set)
+    function challengeDegenerate(uint256 aspId, uint256 root, uint256[] calldata set) external; // set.length < MIN_SET_SIZE
 }
 ```
 

@@ -54,7 +54,7 @@ contract PrivacyPoolMultiASPTest is Test {
     function setUp() public {
         hasher = PoseidonDeployer.deploy(vm);
         verifier = new Groth16Verifier();
-        registry = new ASPRegistry(MIN_STAKE, governance);
+        registry = new ASPRegistry(MIN_STAKE, governance, hasher);
 
         pool = new PrivacyPoolMultiASP(
             IVerifier(address(verifier)), hasher, IASPRegistry(address(registry)), DENOMINATION, LEVELS

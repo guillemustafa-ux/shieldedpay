@@ -47,8 +47,11 @@ contract DeployMultiASP is Script {
 
         hasher = PoseidonDeployer.deploy(vm);
         verifier = new Groth16Verifier();
-        // El deployer queda como governance del registry (dispara slash, stub Layer 5).
-        registry = new ASPRegistry(minStake, deployer);
+        // El deployer queda como governance del registry (sólo slash de emergencia;
+        // el slashing primario es el fraud proof, que no requiere governance). El
+        // registry necesita el MISMO hasher que el pool para recomputar Merkle
+        // roots dentro de los fraud proofs (challengeIntegrity).
+        registry = new ASPRegistry(minStake, deployer, hasher);
         pool = new PrivacyPoolMultiASP(
             IVerifier(address(verifier)), hasher, IASPRegistry(address(registry)), denomination, LEVELS
         );
