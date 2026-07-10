@@ -20,7 +20,7 @@
 
 On-chain privacy is one of the most heavily backed narratives in crypto right now — Privacy Pools is live on mainnet, the Ethereum Foundation integrated it into its Kohaku wallet, and EIP-8182 proposes a protocol-native shielded pool. The interesting frontier is not "a mixer" (that's a solved, sanctioned dead end) but **privacy that a good actor can prove is compliant**. ShieldedPay implements that mechanism — association sets — and explains it.
 
-The full argument, with the market context and a comparison against Tornado / Railgun / Aztec, is in **[`docs/THESIS.md`](docs/THESIS.md)**. Read that to judge whether the author understands the space.
+The full argument, with the market context and a comparison against Tornado / Railgun / Aztec, is in **[`docs/THESIS.md`](docs/THESIS.md)**. Read that to judge whether the author understands the space. For the engineering view — where this demo's structural boundaries are, what a production version would require, and why the highest-leverage move is to build *on* the ecosystem's shared pool rather than beside it — see **[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)**.
 
 ## Architecture
 

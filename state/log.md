@@ -4,6 +4,13 @@ Registro de corridas, decisiones autónomas y bloqueos. Lo más nuevo arriba.
 
 ---
 
+## 2026-07-09 — docs/ARCHITECTURE.md: diseño "de la demo a producción" (trabajo Fable 5, no delegado)
+
+- Guille pidió aprovechar Fable 5 en "algo pesado de estructura" mientras vuelve. Elegí un documento de arquitectura senior (diseño puro, no ejecución → no se delega a Sonnet), que suma sin ensuciar el código (no es sobre-ingeniería: es diseño documentado, honesto sobre qué falta).
+- **`docs/ARCHITECTURE.md`** — las 4 fronteras estructurales de la demo (ASP, denominación, relayer, trusted setup) + 6 ejes de diseño a producción, cada uno con problema/opciones/trade-offs/recomendación opinada: (1) ASP multi-proveedor elegido por el usuario, (2) denominación fija vs shielded balances (fork que define qué ES el proyecto), (3) relayers → account abstraction/paymaster, (4) Groth16 vs universal setup/Noir según tasa de cambio del circuito, (5) scaling/L2/EIP-8182, (6) governance/upgradeability. Sección clave: **build vs integrate** — el argumento honesto de que lo senior es construir SOBRE el pool compartido del ecosistema (Privacy Pools/EIP-8182), no un pool standalone que fragmenta el anonymity set. Roadmap secuenciado + deltas de threat model para producción.
+- Linkeado desde el README (junto a THESIS). Muestra criterio de sistemas, no solo tutorial — señal senior para un revisor de privacy.
+- Commit: en esta corrida. (ShieldedPay a nivel código sigue COMPLETO; el deploy sigue esperando el `.env` de Guille — ver DEPLOY.md.)
+
 ## 2026-07-09 — Refuerzo D: reproducibilidad ZK + CI de la dApp (diseño Fable / ejecución Sonnet) — auditado
 
 - **`circuits/README.md`** — doc técnico del circuito (qué prueba, layout) + **cómo regenerar el pipeline de cero** paso a paso, y —lo clave— la sección de reproducibilidad honesta: r1cs/wasm DETERMINISTA (21735 constraints recompilable por cualquiera) vs zkey/verifier NO determinista (entropía de fase 2 → el verifier versionado es UNO de infinitos válidos; incluye el flujo para que un revisor regenere el suyo y confirme que los tests pasan). Esto es lo que le faltaba al repo para ser una pieza ZK auditable/reproducible.
@@ -102,3 +109,5 @@ Registro de corridas, decisiones autónomas y bloqueos. Lo más nuevo arriba.
 - Commit checkpoint D2: pendiente en esta corrida.
 
 ### ⏸ PAUSA (pedido de Guille). Para retomar: D3 (Fase B parte 2 — PrivacyPool.sol + ASP.sol integrando el verifier, tests on-chain de depósito/retiro/double-spend, deploy Sepolia con OK). El harness `circuits/test/merkleTree.js` se reutiliza para armar los árboles en los tests de Foundry (vía FFI o precomputando inputs). Ver PLAN.md.
+
+[META-STATUS] 2026-07-10 | ESTADO=EN_DESARROLLO | Build completo (Fase A stealth + Fase B privacy pool ZK), 11 commits, 37 tests Foundry + 4 circuito verdes, dApp con proving en browser (3 tabs) + docs (THESIS/SECURITY/ARCHITECTURE) + reproducibilidad ZK. Falta SOLO deploy Sepolia+Vercel+push (espera .env de Guille — ver DEPLOY.md).

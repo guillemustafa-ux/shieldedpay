@@ -74,3 +74,8 @@ forge script script/DeployStealth.s.sol:DeployStealth --rpc-url sepolia --broadc
 ## Estado actual
 
 Ver `PLAN.md` (roadmap D0–D5) y `state/log.md` (bitácora).
+
+## Reporte al meta-nivel
+Al cerrar cada corrida o sesión de trabajo, agregar al final de `state/log.md` una línea:
+`[META-STATUS] YYYY-MM-DD | ESTADO=OPERATIVO|EN_DESARROLLO|BLOQUEADO|PAUSADO | resumen de una línea`
+La lee `C:\Users\Cript\init.sh` para generar la vista de conjunto `SISTEMA-STATUS.md` de todos los proyectos.
