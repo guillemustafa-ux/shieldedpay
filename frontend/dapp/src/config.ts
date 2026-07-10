@@ -1,9 +1,9 @@
 // Configuración de red y contratos de ShieldedPay.
 //
-// Las direcciones se leen de variables de entorno (VITE_POOL_ADDRESS /
-// VITE_ASP_ADDRESS) para que se completen DESPUÉS del deploy sin tocar código.
-// Si no están seteadas, caen a un placeholder 0x000…000 y la UI muestra un
-// banner pidiendo configurarlas. En Vercel se cargan como Environment
+// Los defaults son las addresses del deploy verificado en Sepolia (2026-07-10,
+// ver README "Deployments") — datos públicos, así la dApp buildea lista para
+// Vercel sin configurar nada. Para apuntar a OTRO deploy se pisan con
+// variables de entorno (VITE_POOL_ADDRESS / etc.): en Vercel como Environment
 // Variables del proyecto; en local, en un archivo .env.local (no versionado).
 
 export const SEPOLIA_CHAIN_ID = 11155111;
@@ -12,14 +12,20 @@ export const EXPLORER = "https://sepolia.etherscan.io";
 
 const PLACEHOLDER = "0x0000000000000000000000000000000000000000";
 
-export const POOL_ADDRESS = (import.meta.env.VITE_POOL_ADDRESS ?? PLACEHOLDER).trim();
-export const ASP_ADDRESS = (import.meta.env.VITE_ASP_ADDRESS ?? PLACEHOLDER).trim();
+// Deploy Sepolia 2026-07-10 (verificados en Etherscan; ver README).
+const DEFAULT_POOL = "0x1073AEDfbD3900A50eD5BE98698874383B8b13C9";
+const DEFAULT_ASP = "0x1d86FB2ff0FDf1daD79686e524012A7807e8801F";
+const DEFAULT_REGISTRY = "0xde3D1ae16e62E3A4D81A35D78f68eC576fcFd28f";
+const DEFAULT_ANNOUNCER = "0x6122b8b6caADa7Cc6255bf0D62BC67d399eecf8f";
 
-// Contratos de la Fase A (stealth addresses). Opcionales: la demo criptográfica
-// del tab Stealth corre 100% client-side sin ellos. Si se completan tras el
-// deploy, se habilitan los botones de registrar/anunciar on-chain.
-export const REGISTRY_ADDRESS = (import.meta.env.VITE_REGISTRY_ADDRESS ?? PLACEHOLDER).trim();
-export const ANNOUNCER_ADDRESS = (import.meta.env.VITE_ANNOUNCER_ADDRESS ?? PLACEHOLDER).trim();
+export const POOL_ADDRESS = (import.meta.env.VITE_POOL_ADDRESS ?? DEFAULT_POOL).trim();
+export const ASP_ADDRESS = (import.meta.env.VITE_ASP_ADDRESS ?? DEFAULT_ASP).trim();
+
+// Contratos de la Fase A (stealth addresses). La demo criptográfica del tab
+// Stealth corre 100% client-side; con las addresses se habilitan además los
+// botones de registrar/anunciar on-chain.
+export const REGISTRY_ADDRESS = (import.meta.env.VITE_REGISTRY_ADDRESS ?? DEFAULT_REGISTRY).trim();
+export const ANNOUNCER_ADDRESS = (import.meta.env.VITE_ANNOUNCER_ADDRESS ?? DEFAULT_ANNOUNCER).trim();
 
 export function addressesConfigured(): boolean {
   return POOL_ADDRESS !== PLACEHOLDER && ASP_ADDRESS !== PLACEHOLDER;

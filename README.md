@@ -93,14 +93,32 @@ Highlights:
 
 ## Deployments (Sepolia)
 
-_Deploy pending — addresses and Etherscan links go here once deployed._
+Deployed and verified on 2026-07-10. Pool denomination: **0.001 ETH**.
 
 | Contract | Address | Explorer |
 |---|---|---|
-| ERC6538Registry | `0x…` | _pending_ |
-| ERC5564Announcer | `0x…` | _pending_ |
-| PrivacyPool | `0x…` | _pending_ |
-| ASP | `0x…` | _pending_ |
+| ERC6538Registry | `0xde3D1ae16e62E3A4D81A35D78f68eC576fcFd28f` | [verified](https://sepolia.etherscan.io/address/0xde3D1ae16e62E3A4D81A35D78f68eC576fcFd28f#code) |
+| ERC5564Announcer | `0x6122b8b6caADa7Cc6255bf0D62BC67d399eecf8f` | [verified](https://sepolia.etherscan.io/address/0x6122b8b6caADa7Cc6255bf0D62BC67d399eecf8f#code) |
+| PrivacyPool | `0x1073AEDfbD3900A50eD5BE98698874383B8b13C9` | [verified](https://sepolia.etherscan.io/address/0x1073AEDfbD3900A50eD5BE98698874383B8b13C9#code) |
+| ASP | `0x1d86FB2ff0FDf1daD79686e524012A7807e8801F` | [verified](https://sepolia.etherscan.io/address/0x1d86FB2ff0FDf1daD79686e524012A7807e8801F#code) |
+| Groth16Verifier | `0x89E117f14CBf562087B43507e0890fE2a44Fe8Aa` | [verified](https://sepolia.etherscan.io/address/0x89E117f14CBf562087B43507e0890fE2a44Fe8Aa#code) |
+| Poseidon(2) hasher | `0x4823D77f3f811840c87090a0DdaD28585B58f55c` | [deployed](https://sepolia.etherscan.io/address/0x4823D77f3f811840c87090a0DdaD28585B58f55c) |
+
+Three demo notes were seeded in the pool (association root published on-chain).
+**Note #1 was already withdrawn as the live end-to-end verification**: a real
+Groth16 proof, generated locally against the on-chain tree, verified on-chain
+and paid out — [tx `0xc4d21e0f…0531f4`](https://sepolia.etherscan.io/tx/0xc4d21e0f37fe617587c70416ffba00aa8b766aff199fbaa576d74107af0531f4).
+Notes #2 and #3 remain spendable so anyone can exercise a full ZK withdraw from
+the dApp without depositing first:
+
+| Demo note | nullifier | secret | status |
+|---|---|---|---|
+| #1 | `1` | `11` | **spent** (live E2E proof, tx above) |
+| #2 | `2` | `22` | available |
+| #3 | `3` | `33` | available |
+
+To re-run the live E2E yourself: `NOTE_INDEX=1 RECIPIENT=0x... node circuits/scripts/liveWithdraw.js`
+prints the exact `cast send` for the proof (needs the local ZK build artifacts).
 
 ## Quickstart
 
