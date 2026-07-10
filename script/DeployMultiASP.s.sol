@@ -4,9 +4,11 @@ pragma solidity ^0.8.24;
 import {Script, console} from "forge-std/Script.sol";
 import {PrivacyPoolMultiASP} from "../src/PrivacyPoolMultiASP.sol";
 import {ASPRegistry} from "../src/ASPRegistry.sol";
+import {FlaggedRegistry} from "../src/FlaggedRegistry.sol";
 import {IVerifier} from "../src/interfaces/IVerifier.sol";
 import {IHasher} from "../src/interfaces/IHasher.sol";
 import {IASPRegistry} from "../src/interfaces/IASPRegistry.sol";
+import {IFlaggedRegistry} from "../src/interfaces/IFlaggedRegistry.sol";
 import {Groth16Verifier} from "../src/verifiers/WithdrawVerifier.sol";
 import {PoseidonDeployer} from "../test/utils/PoseidonDeployer.sol";
 
@@ -29,7 +31,13 @@ contract DeployMultiASP is Script {
 
     function run()
         external
-        returns (IHasher hasher, Groth16Verifier verifier, ASPRegistry registry, PrivacyPoolMultiASP pool)
+        returns (
+            IHasher hasher,
+            Groth16Verifier verifier,
+            FlaggedRegistry flaggedRegistry,
+            ASPRegistry registry,
+            PrivacyPoolMultiASP pool
+        )
     {
         // Acepta PRIVATE_KEY con o sin prefijo "0x".
         string memory pkStr = vm.envString("PRIVATE_KEY");
@@ -47,11 +55,16 @@ contract DeployMultiASP is Script {
 
         hasher = PoseidonDeployer.deploy(vm);
         verifier = new Groth16Verifier();
+        // FlaggedRegistry: el deployer queda como attester (stub de Layer 4; en el
+        // diseño real son attestations con disputas, ver su NatSpec). Alimenta el
+        // fraud proof de permisividad (challengeInclusion).
+        flaggedRegistry = new FlaggedRegistry(deployer);
         // El deployer queda como governance del registry (sólo slash de emergencia;
         // el slashing primario es el fraud proof, que no requiere governance). El
         // registry necesita el MISMO hasher que el pool para recomputar Merkle
-        // roots dentro de los fraud proofs (challengeIntegrity).
-        registry = new ASPRegistry(minStake, deployer, hasher);
+        // roots dentro de los fraud proofs (challengeIntegrity) y el FlaggedRegistry
+        // para el fraud proof de permisividad (challengeInclusion).
+        registry = new ASPRegistry(minStake, deployer, hasher, IFlaggedRegistry(address(flaggedRegistry)));
         pool = new PrivacyPoolMultiASP(
             IVerifier(address(verifier)), hasher, IASPRegistry(address(registry)), denomination, LEVELS
         );
@@ -60,6 +73,8 @@ contract DeployMultiASP is Script {
 
         console.log("Hasher Poseidon(2) desplegado en:", address(hasher));
         console.log("Groth16Verifier desplegado en:   ", address(verifier));
+        console.log("FlaggedRegistry desplegado en:   ", address(flaggedRegistry));
+        console.log("  attester (owner):              ", deployer);
         console.log("ASPRegistry desplegado en:       ", address(registry));
         console.log("  governance (owner):            ", deployer);
         console.log("  stake minimo (wei):            ", minStake);

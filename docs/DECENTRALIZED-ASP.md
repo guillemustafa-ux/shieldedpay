@@ -20,17 +20,45 @@ circuit. See `test/ASPRegistry.t.sol` and `test/PrivacyPoolMultiASP.t.sol`.
 
 **What Layer 5 now enforces on-chain** (no trusted adjudicator): when an ASP publishes
 `(root, dataHash)` it commits to `dataHash = keccak256(abi.encodePacked(set))`. Anyone can
-prove fraud by supplying the `set`: `challengeIntegrity` recomputes the Poseidon-Merkle root
-of the set on-chain and slashes the ASP if it ≠ the published `root` (the ASP lied about its
-own root); `challengeDegenerate` slashes if the committed set is smaller than `MIN_SET_SIZE`
-(deanonymizing). An honest ASP (`root == Merkle(set)`, `dataHash == keccak(set)`) is
-**unslashable** — any challenge with the correct set recomputes the same root and reverts;
-a challenger supplying a set whose `keccak != dataHash` cannot frame anyone and reverts. The
-challenger earns 50% of the slashed stake as a bounty. The honestly-remaining future work
-is **data-withholding** (a *negative* — "the committed data is nowhere retrievable" — is not
-directly provable on-chain; it needs a challenge-response reveal protocol) and making the
-fraud proof succinct for large sets (the current version recomputes the whole root, O(n)
-Poseidon hashes: correct-by-construction but gas-heavy at production set sizes).
+prove fraud by supplying the `set`. There are now **three** fraud proofs:
+`challengeIntegrity` recomputes the Poseidon-Merkle root of the set on-chain and slashes the
+ASP if it ≠ the published `root` (the ASP lied about its own root); `challengeDegenerate`
+slashes if the committed set is smaller than `MIN_SET_SIZE` (deanonymizing); and
+**`challengeInclusion` slashes rule-violation / permissiveness** — the ASP included in its
+"clean" set a commitment that is **flagged as dirty** in the `FlaggedRegistry` (the on-chain
+output of the Layer-1 taint screening, maintained off-chain by an attester). An honest ASP
+(`root == Merkle(set)`, `dataHash == keccak(set)`, no flagged commitments) is **unslashable**
+— any challenge with the correct set recomputes the same root, meets the minimum size, has no
+flagged leaves, and reverts; a challenger supplying a set whose `keccak != dataHash` cannot
+frame anyone and reverts. The challenger earns 50% of the slashed stake as a bounty.
+
+**How the three fraud proofs compose** to guarantee the *real* association tree contains no
+flagged commitment: `dataHash` pins the set's **content**; `challengeIntegrity` pins that the
+published `root` is the Merkle tree of *that* content (without it, an ASP could commit a clean
+`set` for the `dataHash` yet publish a `root` that is really the Merkle root of a *different*
+tree containing flagged commitments); `challengeInclusion` pins that *that* content has no
+flagged leaf; `challengeDegenerate` pins that it is large enough not to deanonymize. Together
+they close the gap: the tree the circuit actually proves membership against cannot contain a
+flagged commitment without leaving the ASP slashable by one of the three.
+
+The honestly-remaining future work: **(a) censorship / undue exclusion is not slashable** —
+`challengeInclusion` covers the *positive* ("you included what you should have excluded"); the
+*negative* ("you left out an honest deposit that should be in") needs a *positive policy* of
+what MUST be present and proving "should be in but isn't" is objectively intractable (you
+can't prove censorship intent). Censorship is handled by Layer-3 multi-ASP **exit** (pick
+another ASP; persistent censorship shows up as lost reputation/market share), not by slash.
+**(b) Taint *propagation* is not recomputed on-chain** — walking the whole transaction graph
+is infeasible in a contract, so it is collapsed to the `FlaggedRegistry`: an attester runs the
+analysis off-chain and publishes the *result* (which commitments are flagged); the fraud proof
+proves *inclusion* of a flagged commitment, it does not re-derive the graph. The correctness of
+the flag itself rests on the attester / Layer-4 disputes, not on the fraud proof. **(c) A
+single `FlaggedRegistry` / attester** in this slice — the Layer-4 generalization is multiple
+per-ASP policies (each ASP honors different attesters per its `policyHash`, and
+`challengeInclusion` is evaluated against the attester that ASP declared). Also still open:
+**data-withholding** (a *negative* — "the committed data is nowhere retrievable" — needs a
+challenge-response reveal protocol) and making the integrity fraud proof succinct for large
+sets (the current version recomputes the whole root, O(n) Poseidon hashes:
+correct-by-construction but gas-heavy at production set sizes).
 
 ---
 
@@ -124,6 +152,19 @@ anyone can recompute the set and verify the ASP didn't cheat — the ASP becomes
 *replicator of a public computation*, not an oracle of opinion. Different propagation
 policies (e.g. taint-decay, minimum-hop cutoffs) become different, labeled ASPs.
 
+**Implemented in this slice — the rule-violation (permissiveness) fraud proof.** The full
+taint propagation over the transaction graph is *not* recomputable on-chain (a contract can't
+walk the graph), so the slice collapses the *output* of Layer-1 screening to an on-chain
+**`FlaggedRegistry`** (`src/FlaggedRegistry.sol`): a mapping `commitment => flagged` that an
+attester maintains off-chain (`flag`/`flagBatch`/`unflag`, `onlyOwner`). On top of it,
+`ASPRegistry.challengeInclusion` (Layer 5) is the verifiable fraud proof of **permissiveness**:
+a challenger supplies the ASP's committed `set` plus the index of a commitment that is flagged;
+the contract verifies `keccak(set) == dataHash` and `flaggedRegistry.isFlagged(set[i])`, and
+slashes the ASP for including dirty funds it should have excluded. This makes the "permissive
+ASP" fault *slashable* rather than merely reputational. What stays off-chain (honestly): the
+propagation itself and the correctness of each flag — those rest on the attester and Layer-4
+disputes; the on-chain proof only proves *inclusion* of an already-published flag.
+
 ### Layer 2 — Data availability
 
 The set is only useful if withdrawers can fetch it to build their Merkle path.
@@ -183,6 +224,21 @@ Registered ASPs post a **stake**. They can be slashed by on-chain-provable fault
   `MIN_SET_SIZE` (a size-1 set fully deanonymizes; `MIN_SET_SIZE = 2` is the conceptual floor,
   raised much higher in production). Anyone supplies the set; the contract slashes on
   `set.length < MIN_SET_SIZE`.
+- **Rule-violation / permissiveness** (IMPLEMENTED — `challengeInclusion`) — the ASP included a
+  commitment flagged as dirty (in the `FlaggedRegistry`, the on-chain collapse of the Layer-1
+  screening output) in its "clean" set. Anyone supplies the committed `set` plus the flagged
+  index; the contract verifies `keccak(set) == dataHash` and `isFlagged(set[i])` and slashes. It
+  does *not* recompute the Merkle root: combined with `challengeIntegrity` (which pins
+  `root == Merkle(set)`), proving inclusion of a flagged leaf in the committed set is enough to
+  guarantee the real tree carries a flagged commitment. The taint *propagation* is not
+  recomputed on-chain — only *inclusion* of an already-published flag is proven (the propagation
+  and the correctness of each flag rest on the attester / Layer-4 disputes). This slice uses a
+  single `FlaggedRegistry`/attester; the Layer-4 generalization is per-ASP honored attester sets.
+- **Censorship / undue exclusion** (NOT SLASHABLE, by design) — the *negative* fault ("an honest
+  deposit that should be in the set was left out") is not slashable: it would require a positive
+  policy of what MUST be included, and "should be in but isn't" can't be proven objectively
+  on-chain (no way to prove censorship intent). Handled by Layer-3 **exit** — the user selects
+  another ASP; persistent censorship shows up as lost reputation and market share.
 - **Data withholding** (FUTURE) — published a `dataHash` whose content is *unavailable*. This
   is a *negative* and cannot be proven directly on-chain (no contract can prove the
   non-existence of data). It requires a **challenge-response reveal protocol**: a challenger
@@ -234,6 +290,12 @@ interface IASPRegistry {
     // Fraud proofs (implemented): supply the committed set; the contract verifies and slashes.
     function challengeIntegrity(uint256 aspId, uint256 root, uint256[] calldata set) external;  // root != Merkle(set)
     function challengeDegenerate(uint256 aspId, uint256 root, uint256[] calldata set) external; // set.length < MIN_SET_SIZE
+    function challengeInclusion(uint256 aspId, uint256 root, uint256[] calldata set, uint256 flaggedIndex) external; // set[i] is flagged
+}
+
+// FlaggedRegistry: on-chain collapse of the Layer-1 screening output (attester-maintained).
+interface IFlaggedRegistry {
+    function isFlagged(uint256 commitment) external view returns (bool);
 }
 ```
 

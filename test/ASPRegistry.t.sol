@@ -3,6 +3,8 @@ pragma solidity ^0.8.24;
 
 import {Test} from "forge-std/Test.sol";
 import {ASPRegistry} from "../src/ASPRegistry.sol";
+import {FlaggedRegistry} from "../src/FlaggedRegistry.sol";
+import {IFlaggedRegistry} from "../src/interfaces/IFlaggedRegistry.sol";
 import {IHasher} from "../src/interfaces/IHasher.sol";
 import {PoseidonMerkleLib} from "../src/lib/PoseidonMerkleLib.sol";
 import {PoseidonDeployer} from "./utils/PoseidonDeployer.sol";
@@ -21,9 +23,11 @@ contract ASPRegistryTest is Test {
     uint256 internal constant MIN_STAKE = 0.01 ether;
 
     ASPRegistry internal registry;
+    FlaggedRegistry internal flaggedRegistry;
     IHasher internal hasher;
 
     address internal governance = makeAddr("governance");
+    address internal attester = makeAddr("attester");
     address internal aspOwner1 = makeAddr("aspOwner1");
     address internal aspOwner2 = makeAddr("aspOwner2");
     address internal stranger = makeAddr("stranger");
@@ -41,7 +45,8 @@ contract ASPRegistryTest is Test {
 
     function setUp() public {
         hasher = PoseidonDeployer.deploy(vm);
-        registry = new ASPRegistry(MIN_STAKE, governance, hasher);
+        flaggedRegistry = new FlaggedRegistry(attester);
+        registry = new ASPRegistry(MIN_STAKE, governance, hasher, IFlaggedRegistry(address(flaggedRegistry)));
         vm.deal(aspOwner1, 10 ether);
         vm.deal(aspOwner2, 10 ether);
 
@@ -348,5 +353,142 @@ contract ASPRegistryTest is Test {
         registry.challengeDegenerate(aspId, fxAssocRoot, assocSet);
 
         assertTrue(registry.isActive(aspId), "un ASP con set sano NO es slasheable");
+    }
+
+    // ---------------------------------------------------------------------
+    // FlaggedRegistry — control de acceso del attester
+    // ---------------------------------------------------------------------
+
+    function test_Flag_RevertsIf_NotOwner() public {
+        vm.prank(stranger);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, stranger));
+        flaggedRegistry.flag(assocSet[0]);
+    }
+
+    function test_Unflag_RevertsIf_NotOwner() public {
+        vm.prank(attester);
+        flaggedRegistry.flag(assocSet[0]);
+
+        vm.prank(stranger);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, stranger));
+        flaggedRegistry.unflag(assocSet[0]);
+    }
+
+    function test_FlagUnflag_ByAttester_TogglesState() public {
+        assertFalse(flaggedRegistry.isFlagged(assocSet[0]), "arranca limpio");
+
+        vm.prank(attester);
+        flaggedRegistry.flag(assocSet[0]);
+        assertTrue(flaggedRegistry.isFlagged(assocSet[0]), "marcado tras flag");
+
+        vm.prank(attester);
+        flaggedRegistry.unflag(assocSet[0]);
+        assertFalse(flaggedRegistry.isFlagged(assocSet[0]), "limpio tras unflag");
+    }
+
+    // ---------------------------------------------------------------------
+    // Layer 5 — Fraud proof de permisividad (inclusión de un commitment marcado)
+    // ---------------------------------------------------------------------
+
+    function test_ChallengeInclusion_SlashesPermissiveAsp_AndRewardsChallenger() public {
+        uint256 aspId = _registerAsp(aspOwner1);
+
+        // El ASP publica un set consistente (root == Merkle(set), keccak == dataHash)
+        // pero que INCLUYE un commitment que el attester marcó como sucio → permisivo.
+        bytes32 dataHash = keccak256(abi.encodePacked(assocSet));
+        vm.prank(aspOwner1);
+        registry.publishRoot(aspId, fxAssocRoot, dataHash);
+
+        // El attester marca el commitment del índice 1 del set.
+        vm.prank(attester);
+        flaggedRegistry.flag(assocSet[1]);
+
+        uint256 expectedReward = (MIN_STAKE * registry.SLASH_REWARD_BPS()) / 10000;
+        assertEq(challenger.balance, 0, "challenger arranca sin balance");
+
+        vm.expectEmit(true, true, false, true, address(registry));
+        emit ASPRegistry.ASPSlashedByFraud(aspId, challenger, expectedReward, "permisividad: incluyo un commitment marcado");
+
+        vm.prank(challenger);
+        registry.challengeInclusion(aspId, fxAssocRoot, assocSet, 1);
+
+        assertFalse(registry.isActive(aspId), "el ASP permisivo queda inactivo tras el slash");
+        assertEq(challenger.balance, expectedReward, "el challenger cobra 50% del stake");
+        (,,, uint256 stake, bool slashed,,,) = registry.asps(aspId);
+        assertTrue(slashed, "slashed == true");
+        assertEq(stake, 0, "stake zeroeado tras el slash");
+    }
+
+    function test_ChallengeInclusion_RevertsIf_NoFlaggedCommitment() public {
+        uint256 aspId = _registerAsp(aspOwner1);
+
+        // Set sin ningún commitment marcado: el attester no marcó nada.
+        bytes32 dataHash = keccak256(abi.encodePacked(assocSet));
+        vm.prank(aspOwner1);
+        registry.publishRoot(aspId, fxAssocRoot, dataHash);
+
+        vm.prank(challenger);
+        vm.expectRevert("sin fraude: ese commitment no esta marcado");
+        registry.challengeInclusion(aspId, fxAssocRoot, assocSet, 1);
+
+        assertTrue(registry.isActive(aspId), "un ASP con set limpio NO es slasheable");
+    }
+
+    function test_ChallengeInclusion_RevertsIf_IndexPointsToCleanCommitment() public {
+        uint256 aspId = _registerAsp(aspOwner1);
+
+        bytes32 dataHash = keccak256(abi.encodePacked(assocSet));
+        vm.prank(aspOwner1);
+        registry.publishRoot(aspId, fxAssocRoot, dataHash);
+
+        // Se marca el índice 2, pero el challenger apunta al índice 0 (limpio).
+        vm.prank(attester);
+        flaggedRegistry.flag(assocSet[2]);
+
+        vm.prank(challenger);
+        vm.expectRevert("sin fraude: ese commitment no esta marcado");
+        registry.challengeInclusion(aspId, fxAssocRoot, assocSet, 0);
+
+        assertTrue(registry.isActive(aspId), "apuntar a un commitment limpio no slashea");
+    }
+
+    function test_ChallengeInclusion_RevertsIf_SetMismatchesDataHash() public {
+        uint256 aspId = _registerAsp(aspOwner1);
+
+        bytes32 dataHash = keccak256(abi.encodePacked(assocSet));
+        vm.prank(aspOwner1);
+        registry.publishRoot(aspId, fxAssocRoot, dataHash);
+
+        // Aunque marque el commitment, un set cuyo keccak != dataHash no puede framear.
+        vm.prank(attester);
+        flaggedRegistry.flag(99);
+
+        uint256[] memory fakeSet = new uint256[](2);
+        fakeSet[0] = 99;
+        fakeSet[1] = 100;
+
+        vm.prank(challenger);
+        vm.expectRevert("el set no matchea el dataHash comprometido");
+        registry.challengeInclusion(aspId, fxAssocRoot, fakeSet, 0);
+    }
+
+    function test_ChallengeInclusion_RevertsIf_IndexOutOfRange() public {
+        uint256 aspId = _registerAsp(aspOwner1);
+
+        bytes32 dataHash = keccak256(abi.encodePacked(assocSet));
+        vm.prank(aspOwner1);
+        registry.publishRoot(aspId, fxAssocRoot, dataHash);
+
+        vm.prank(challenger);
+        vm.expectRevert("flaggedIndex fuera de rango");
+        registry.challengeInclusion(aspId, fxAssocRoot, assocSet, assocSet.length);
+    }
+
+    function test_ChallengeInclusion_RevertsIf_RootNotPublished() public {
+        uint256 aspId = _registerAsp(aspOwner1);
+        // No publicó ninguna root: rootDataHash == 0.
+        vm.prank(challenger);
+        vm.expectRevert("root no publicada por este ASP");
+        registry.challengeInclusion(aspId, fxAssocRoot, assocSet, 0);
     }
 }

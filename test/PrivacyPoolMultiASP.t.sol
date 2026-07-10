@@ -4,9 +4,11 @@ pragma solidity ^0.8.24;
 import {Test} from "forge-std/Test.sol";
 import {PrivacyPoolMultiASP} from "../src/PrivacyPoolMultiASP.sol";
 import {ASPRegistry} from "../src/ASPRegistry.sol";
+import {FlaggedRegistry} from "../src/FlaggedRegistry.sol";
 import {IVerifier} from "../src/interfaces/IVerifier.sol";
 import {IHasher} from "../src/interfaces/IHasher.sol";
 import {IASPRegistry} from "../src/interfaces/IASPRegistry.sol";
+import {IFlaggedRegistry} from "../src/interfaces/IFlaggedRegistry.sol";
 import {Groth16Verifier} from "../src/verifiers/WithdrawVerifier.sol";
 import {PoseidonDeployer} from "./utils/PoseidonDeployer.sol";
 
@@ -54,7 +56,10 @@ contract PrivacyPoolMultiASPTest is Test {
     function setUp() public {
         hasher = PoseidonDeployer.deploy(vm);
         verifier = new Groth16Verifier();
-        registry = new ASPRegistry(MIN_STAKE, governance, hasher);
+        // FlaggedRegistry (stub Layer 4): este pool E2E no ejercita el fraud proof de
+        // permisividad, pero el ASPRegistry ahora lo exige en su constructor.
+        FlaggedRegistry flaggedRegistry = new FlaggedRegistry(governance);
+        registry = new ASPRegistry(MIN_STAKE, governance, hasher, IFlaggedRegistry(address(flaggedRegistry)));
 
         pool = new PrivacyPoolMultiASP(
             IVerifier(address(verifier)), hasher, IASPRegistry(address(registry)), DENOMINATION, LEVELS

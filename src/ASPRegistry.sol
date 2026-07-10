@@ -4,6 +4,7 @@ pragma solidity ^0.8.24;
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {IASPRegistry} from "./interfaces/IASPRegistry.sol";
+import {IFlaggedRegistry} from "./interfaces/IFlaggedRegistry.sol";
 import {IHasher} from "./interfaces/IHasher.sol";
 import {PoseidonMerkleLib} from "./lib/PoseidonMerkleLib.sol";
 
@@ -34,10 +35,31 @@ import {PoseidonMerkleLib} from "./lib/PoseidonMerkleLib.sol";
 ///               * challengeDegenerate: keccak(set) == dataHash y set.length <
 ///                 MIN_SET_SIZE → el ASP publicó un set que desanonimiza usuarios
 ///                 → SLASH + recompensa.
-///             Un ASP HONESTO (publicó root = Merkle(set) y dataHash = keccak(set))
-///             NO es slasheable: cualquier challenge con el set correcto recomputa
-///             la MISMA root y revierte "sin fraude". Un challenger que provee un
+///               * challengeInclusion: keccak(set) == dataHash y algún commitment
+///                 del set está MARCADO como sucio en el FlaggedRegistry → el ASP
+///                 fue PERMISIVO (incluyó fondos que las reglas dicen excluir) en su
+///                 set "limpio" → SLASH + recompensa.
+///             Un ASP HONESTO (publicó root = Merkle(set), dataHash = keccak(set) y
+///             sin commitments marcados) NO es slasheable: cualquier challenge con el
+///             set correcto recomputa la MISMA root, cumple el tamaño mínimo y no
+///             tiene marcados → revierte "sin fraude". Un challenger que provee un
 ///             set con keccak != dataHash tampoco puede framear: revierte.
+///
+///             Cómo se COMPLEMENTAN los tres fraud proofs para garantizar que el
+///             árbol de asociación REAL no incluye commitments marcados:
+///               - challengeIntegrity ata la root publicada al set comprometido:
+///                 garantiza root == Merkle(set). Sin esto, un ASP podría publicar
+///                 un set "limpio" para el dataHash pero una root que en realidad
+///                 corresponde a OTRO árbol (con marcados).
+///               - challengeInclusion prueba que ese set comprometido no contiene
+///                 marcados: si contiene uno, slashea.
+///               - challengeDegenerate garantiza que el set tiene tamaño suficiente
+///                 (no desanonimiza).
+///             Juntos cierran: como el dataHash fija el CONTENIDO del set, integridad
+///             fija que la root ES el Merkle de ESE contenido, e inclusión fija que
+///             ESE contenido no tiene marcados, el árbol real (el que el circuito
+///             usa para probar membresía) no puede contener un commitment marcado sin
+///             dejar al ASP slasheable por alguno de los tres.
 ///
 /// @dev LÍMITES HONESTOS (documentados, no ocultos) — trabajo futuro descripto en
 ///      DECENTRALIZED-ASP.md:
@@ -58,6 +80,27 @@ import {PoseidonMerkleLib} from "./lib/PoseidonMerkleLib.sol";
 ///           didáctica/correcta-por-construcción.
 ///        3. GOVERNANCE SLASH DE EMERGENCIA. Se conserva slash() onlyOwner como
 ///           backup (ver su NatSpec), pero el mecanismo PRIMARIO es el fraud proof.
+///        4. CENSURA / EXCLUSIÓN-INDEBIDA NO ES SLASHEABLE. challengeInclusion cubre
+///           el POSITIVO ("incluiste algo que debías excluir"). El NEGATIVO ("dejaste
+///           afuera un depósito honesto que debía estar") no se puede probar por
+///           slash: exigiría una POLÍTICA POSITIVA de qué DEBE estar, y probar que
+///           algo "debería estar y no está" es intratable objetivamente (no se puede
+///           probar intención de censura). La censura se maneja por ELECCIÓN
+///           multi-ASP de Layer 3 (el usuario se va a otro ASP; la censura persistente
+///           se paga en reputación / cuota de mercado), no por slash.
+///        5. TAINT PROPAGATION NO SE RECOMPUTA ON-CHAIN. Propagar taint sobre el
+///           grafo de transacciones es inviable en un contrato. Lo colapsamos al
+///           FlaggedRegistry: un attester corre el análisis OFF-CHAIN y publica el
+///           RESULTADO (qué commitments quedaron marcados). challengeInclusion prueba
+///           INCLUSIÓN de un marcado, NO recomputa el grafo. La corrección del propio
+///           marcado (que la propagación se hizo bien) descansa en el attester / las
+///           disputas de Layer 4, no en el fraud proof.
+///        6. UN SOLO FlaggedRegistry / ATTESTER EN EL SLICE. Acá hay un único
+///           FlaggedRegistry (inyectado en el constructor) que todos los ASP honran.
+///           La generalización de Layer 4 es MÚLTIPLES políticas por-ASP: cada ASP
+///           honra distintos attesters según su `policyHash`, y challengeInclusion se
+///           evaluaría contra el attester que ESE ASP declaró honrar. Fuera de alcance
+///           de este slice.
 contract ASPRegistry is IASPRegistry, Ownable, ReentrancyGuard {
     /// @notice Cantidad de association roots recientes que recordamos por ASP
     ///         (ventana circular por-ASP; mismo patrón conceptual que
@@ -92,6 +135,13 @@ contract ASPRegistry is IASPRegistry, Ownable, ReentrancyGuard {
     ///         MISMO hasher que usa el pool/árbol, así que la root recomputada
     ///         coincide bit-a-bit con la real.
     IHasher public immutable hasher;
+
+    /// @notice Registro on-chain de commitments marcados como sucios (salida del
+    ///         screening de Layer 1, mantenido off-chain por un attester). El fraud
+    ///         proof de permisividad (challengeInclusion) lo consulta para probar que
+    ///         un ASP incluyó un commitment marcado en su set. Inmutable: fijado por
+    ///         constructor. Ver src/FlaggedRegistry.sol y la limitación #6 de cabecera.
+    IFlaggedRegistry public immutable flaggedRegistry;
 
     /// @notice Datos de cada ASP registrado. `owner` == address(0) => no existe.
     /// @dev El historial de roots vive aparte (`aspRoots`) porque un struct no
@@ -153,10 +203,16 @@ contract ASPRegistry is IASPRegistry, Ownable, ReentrancyGuard {
     ///        pasa por él.
     /// @param _hasher Hasher Poseidon(2) on-chain, para recomputar Merkle roots en
     ///        los fraud proofs. Debe ser el mismo hasher que usa el pool.
-    constructor(uint256 _minStake, address _governance, IHasher _hasher) Ownable(_governance) {
+    /// @param _flaggedRegistry Registro de commitments marcados como sucios, que
+    ///        alimenta el fraud proof de permisividad (challengeInclusion).
+    constructor(uint256 _minStake, address _governance, IHasher _hasher, IFlaggedRegistry _flaggedRegistry)
+        Ownable(_governance)
+    {
         require(address(_hasher) != address(0), "hasher requerido");
+        require(address(_flaggedRegistry) != address(0), "flaggedRegistry requerido");
         MIN_STAKE = _minStake;
         hasher = _hasher;
+        flaggedRegistry = _flaggedRegistry;
     }
 
     /// @notice Registra un nuevo ASP depositando al menos MIN_STAKE.
@@ -259,6 +315,43 @@ contract ASPRegistry is IASPRegistry, Ownable, ReentrancyGuard {
         require(set.length < MIN_SET_SIZE, "sin fraude: el set cumple el tamano minimo");
 
         _slashByFraud(aspId, msg.sender, "degenerado: set por debajo del minimo");
+    }
+
+    /// @notice FRAUD PROOF de permisividad: prueba que un ASP incluyó en su set
+    ///         "limpio" un commitment MARCADO como sucio (en el FlaggedRegistry), y
+    ///         lo slashea.
+    /// @dev Flujo: (1) el ASP publicó (root, dataHash) — rootDataHash != 0; (2) el
+    ///      challenger provee el `set` comprometido exacto (keccak(set) == dataHash;
+    ///      si no matchea, revierte: no se puede framear con un set arbitrario);
+    ///      (3) apunta con `flaggedIndex` a una hoja del set que está marcada en el
+    ///      FlaggedRegistry → el ASP fue permisivo → slash + recompensa. Si el
+    ///      commitment en flaggedIndex NO está marcado, revierte "sin fraude".
+    ///
+    ///      NO recomputa el Merkle root: no hace falta. Junto con challengeIntegrity
+    ///      (que garantiza root == Merkle(set)), esto cierra que el árbol REAL — el
+    ///      que el circuito usa para probar membresía — no contiene el marcado sin
+    ///      dejar al ASP slasheable. El taint PROPAGATION no se recomputa on-chain
+    ///      (ver limitación #5): sólo se prueba INCLUSIÓN de un marcado ya publicado.
+    /// @param aspId ASP impugnado.
+    /// @param root Root publicada que se impugna.
+    /// @param set Set de commitments que el ASP comprometió vía dataHash.
+    /// @param flaggedIndex Índice, dentro de `set`, del commitment marcado.
+    function challengeInclusion(uint256 aspId, uint256 root, uint256[] calldata set, uint256 flaggedIndex)
+        external
+        nonReentrant
+    {
+        ASPInfo storage info = asps[aspId];
+        require(info.owner != address(0), "ASP inexistente");
+        require(!info.slashed, "ASP ya slashed");
+
+        bytes32 committed = rootDataHash[aspId][root];
+        require(committed != bytes32(0), "root no publicada por este ASP");
+        require(keccak256(abi.encodePacked(set)) == committed, "el set no matchea el dataHash comprometido");
+
+        require(flaggedIndex < set.length, "flaggedIndex fuera de rango");
+        require(flaggedRegistry.isFlagged(set[flaggedIndex]), "sin fraude: ese commitment no esta marcado");
+
+        _slashByFraud(aspId, msg.sender, "permisividad: incluyo un commitment marcado");
     }
 
     /// @notice Slash de EMERGENCIA por governance (backup, NO el mecanismo primario).
