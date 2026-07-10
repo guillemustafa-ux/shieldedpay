@@ -4,6 +4,15 @@ Registro de corridas, decisiones autónomas y bloqueos. Lo más nuevo arriba.
 
 ---
 
+## 2026-07-09 — Refuerzo D: reproducibilidad ZK + CI de la dApp (diseño Fable / ejecución Sonnet) — auditado
+
+- **`circuits/README.md`** — doc técnico del circuito (qué prueba, layout) + **cómo regenerar el pipeline de cero** paso a paso, y —lo clave— la sección de reproducibilidad honesta: r1cs/wasm DETERMINISTA (21735 constraints recompilable por cualquiera) vs zkey/verifier NO determinista (entropía de fase 2 → el verifier versionado es UNO de infinitos válidos; incluye el flujo para que un revisor regenere el suyo y confirme que los tests pasan). Esto es lo que le faltaba al repo para ser una pieza ZK auditable/reproducible.
+- **`circuits/scripts/build.sh`** — helper idempotente: baja circom v2.2.3 (release iden3 `circom-windows-amd64.exe`) si falta, compila el circuito, y valida por `snarkjs r1cs info` que sean **21735 constraints** (exit≠0 si no matchea). No regenera zkey/verifier.
+- **`.github/workflows/dapp.yml`** — CI nuevo: `npm ci && npm run build` en frontend/dapp (node 20, hardening `permissions:{}` + `contents:read`, calca test.yml). Cubre el build de la dApp que el CI de Foundry no tocaba.
+- **Fix Fable (correctness):** el agente detectó que `npm test` de circuits/ estaba roto en **Node 24** (el script pasaba `test/` directorio pelado, que Node 24 ya no resuelve como raíz). Correctamente no tocó package.json (fuera de su entregable) y me lo dejó. Cambié el script a `node --test --test-force-exit "test/*.test.js"` → 4/4 verdes en Node 24.
+- **Auditoría Fable (re-corrida por mí):** `bash circuits/scripts/build.sh` → 21735 constraints exit 0; `forge build` exit 0; `npm test` (circuits) 4/4; `npm run build` (dapp) exit 0; dapp.yml bien formado. README técnicamente correcto.
+- Commit refuerzo D: en esta corrida (dominio circuits/ + .github/ + fix package.json).
+
 ## 2026-07-09 — Refuerzo C: tab de stealth en la dApp (diseño Fable / ejecución Sonnet) — auditado
 
 - **Diferencial #2 cerrado:** la dApp ahora tiene 3 tabs (Depositar / Retirar / **Stealth**) → cuenta "stealth + pool = un sistema de pagos privados", no dos demos sueltas.
