@@ -4,6 +4,14 @@ Registro de corridas, decisiones autónomas y bloqueos. Lo más nuevo arriba.
 
 ---
 
+## 2026-07-10 — Slice vertical: ASP registry multi-ASP (diseño Fable / ejecución Sonnet) — auditado
+
+- Guille pidió pasar de diseño a código: construir el ASP registry del DECENTRALIZED-ASP.md como slice vertical. Diseño Fable (spec cerrado), ejecución Sonnet. **Archivos nuevos, demo original INTACTO** (PrivacyPool.sol/ASP.sol sin tocar).
+- **`src/ASPRegistry.sol`** — Layer 3 completo + stub Layer 5: `register()` con MIN_STAKE, `publishRoot()` con historial circular por-ASP (30), `isActive()`/`isKnownRoot()`, `slash()` (governance stub). **`src/PrivacyPoolMultiASP.sol`** — pool que consume el registry: withdraw toma `aspId` extra y valida `registry.isActive(aspId) && registry.isKnownRoot(aspId, associationRoot)` (el circuito/prueba NO cambian; aspId es selector on-chain, no señal ZK). `src/interfaces/IASPRegistry.sol`, `script/DeployMultiASP.s.sol`.
+- **54/54 tests verdes** (37 previos intactos + 17 nuevos: 10 del registry + 7 del pool multiASP). Corazón: `test_Withdraw_ValidProof_AspSelected_PaysRecipient` — la MISMA prueba Groth16 real del fixture verifica contra el pool multi-ASP igual que contra el original → el cambio a registry NO tocó la criptografía. Rechazos: ASP inexistente, no-publicó-esa-root, slashed, double-spend, fee/relayer.
+- **Auditoría Fable:** `isKnownRoot` (loop circular por-ASP) correcto — recorre los 30 slots una vez, rechaza root=0 y ASP inexistente, sin falsos positivos. Control de acceso OK (publishRoot solo owner del ASP, slash solo governance). Sin superficie de reentrancy. Stubs bien documentados (slashing por governance, DA no validada, minSetSize) — el fraud-proof real es futuro.
+- **Cierra el loop diseño→código:** DECENTRALIZED-ASP.md actualizado marcando que el PoC de Layer 3+5-stub existe y está testeado.
+- Commit slice: en esta corrida.
 ## 2026-07-10 — docs/DECENTRALIZED-ASP.md: diseño de un ASP descentralizado (trabajo Fable 5, elegido por Guille)
 
 - Guille pidió otra tarea de estructura pesada; eligió (de 3 opciones) "componente sobre el pool compartido" — coherente con la recomendación build-vs-integrate de ARCHITECTURE.md.
@@ -118,4 +126,4 @@ Registro de corridas, decisiones autónomas y bloqueos. Lo más nuevo arriba.
 
 ### ⏸ PAUSA (pedido de Guille). Para retomar: D3 (Fase B parte 2 — PrivacyPool.sol + ASP.sol integrando el verifier, tests on-chain de depósito/retiro/double-spend, deploy Sepolia con OK). El harness `circuits/test/merkleTree.js` se reutiliza para armar los árboles en los tests de Foundry (vía FFI o precomputando inputs). Ver PLAN.md.
 
-[META-STATUS] 2026-07-10 | ESTADO=EN_DESARROLLO | Build completo (Fase A stealth + Fase B privacy pool ZK), 12 commits, 37 tests Foundry + 4 circuito verdes, dApp con proving en browser (3 tabs) + docs (THESIS/SECURITY/ARCHITECTURE/DECENTRALIZED-ASP) + reproducibilidad ZK. Falta SOLO deploy Sepolia+Vercel+push (espera .env de Guille — ver DEPLOY.md).
+[META-STATUS] 2026-07-10 | ESTADO=EN_DESARROLLO | Build completo (Fase A stealth + Fase B privacy pool ZK), 13 commits, 54 tests Foundry + 4 circuito verdes, dApp con proving en browser (3 tabs) + docs (THESIS/SECURITY/ARCHITECTURE/DECENTRALIZED-ASP) + PoC vertical del ASP registry multi-ASP + reproducibilidad ZK. Falta SOLO deploy Sepolia+Vercel+push (espera .env de Guille — ver DEPLOY.md).

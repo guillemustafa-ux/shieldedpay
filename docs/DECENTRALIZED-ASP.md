@@ -7,7 +7,16 @@
 > *on top of* the shared privacy pool, and an open problem the ecosystem has not
 > fully solved.
 
-This is a design blueprint, not shipped code. It is written to be built.
+This is a design blueprint — and a **vertical-slice proof-of-concept of Layer 3 (the
+multi-ASP registry) plus the Layer 5 slashing stub is implemented and tested**:
+`src/ASPRegistry.sol` (registration with stake, per-ASP circular root history,
+`isActive`/`isKnownRoot`, governance slashing) and `src/PrivacyPoolMultiASP.sol` (a
+pool that validates withdrawals against a user-selected ASP via the registry). The same
+real Groth16 withdrawal proof verifies against the multi-ASP pool exactly as against the
+single-ASP demo — confirming the decentralization touches *only* which roots the pool
+honors, never the circuit. See `test/ASPRegistry.t.sol` and `test/PrivacyPoolMultiASP.t.sol`.
+The layers marked "future" below (fraud-proof slashing, DA validation, minimum set size)
+are the honest remaining work.
 
 ---
 
