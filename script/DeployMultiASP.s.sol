@@ -51,10 +51,17 @@ contract DeployMultiASP is Script {
         uint256 denomination = vm.envOr("POOL_DENOMINATION", uint256(0.01 ether));
         uint256 minStake = vm.envOr("ASP_MIN_STAKE", uint256(0.01 ether));
 
+        // Reutiliza hasher/verifier YA deployados si se pasan por env (HASHER_ADDRESS,
+        // VERIFIER_ADDRESS): el Poseidon(2) y el verifier del circuito son bytecode
+        // fijo e idéntico al de un deploy previo, así que redeployarlos sólo quema gas.
+        // Si no se pasan (address(0)), los deploya fresh como antes.
+        address hasherAddr = vm.envOr("HASHER_ADDRESS", address(0));
+        address verifierAddr = vm.envOr("VERIFIER_ADDRESS", address(0));
+
         vm.startBroadcast(pk);
 
-        hasher = PoseidonDeployer.deploy(vm);
-        verifier = new Groth16Verifier();
+        hasher = hasherAddr == address(0) ? PoseidonDeployer.deploy(vm) : IHasher(hasherAddr);
+        verifier = verifierAddr == address(0) ? new Groth16Verifier() : Groth16Verifier(verifierAddr);
         // FlaggedRegistry: el deployer queda como attester (stub de Layer 4; en el
         // diseño real son attestations con disputas, ver su NatSpec). Alimenta el
         // fraud proof de permisividad (challengeInclusion).

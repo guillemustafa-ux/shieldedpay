@@ -93,7 +93,7 @@ Highlights:
 
 ## Decentralizing the ASP
 
-The single-owner ASP above is the honest demo boundary — and the most interesting place to push past it. This repo also contains a **decentralized ASP**, built as a working, tested implementation (**not deployed** — the Sepolia contracts below are the single-owner demo). The full design is in [`docs/DECENTRALIZED-ASP.md`](docs/DECENTRALIZED-ASP.md); the code is [`src/ASPRegistry.sol`](src/ASPRegistry.sol), [`src/PrivacyPoolMultiASP.sol`](src/PrivacyPoolMultiASP.sol), [`src/FlaggedRegistry.sol`](src/FlaggedRegistry.sol) and [`src/lib/PoseidonMerkleLib.sol`](src/lib/PoseidonMerkleLib.sol).
+The single-owner ASP above is the honest demo boundary — and the most interesting place to push past it. This repo also contains a **decentralized ASP**, built as a working, tested implementation and now **deployed and verified on Sepolia** with both of its distinctive on-chain actions exercised by real transactions (a fraud-proof slash and a ZK withdrawal — see [Deployments](#deployments-sepolia)). The full design is in [`docs/DECENTRALIZED-ASP.md`](docs/DECENTRALIZED-ASP.md); the code is [`src/ASPRegistry.sol`](src/ASPRegistry.sol), [`src/PrivacyPoolMultiASP.sol`](src/PrivacyPoolMultiASP.sol), [`src/FlaggedRegistry.sol`](src/FlaggedRegistry.sol) and [`src/lib/PoseidonMerkleLib.sol`](src/lib/PoseidonMerkleLib.sol).
 
 The key idea: **the ZK circuit does not change.** Decentralization lives entirely in *which* association roots the pool honors — a registry lookup — not in the cryptography. The *same* real Groth16 proof verifies against both the original pool and the multi-ASP pool.
 
@@ -137,6 +137,21 @@ the dApp without depositing first:
 
 To re-run the live E2E yourself: `NOTE_INDEX=1 RECIPIENT=0x... node circuits/scripts/liveWithdraw.js`
 prints the exact `cast send` for the proof (needs the local ZK build artifacts).
+
+### Decentralized ASP — also live
+
+The [decentralized ASP](#decentralizing-the-asp) is no longer just tested — it is **deployed and verified on Sepolia**, and both of its distinctive on-chain actions have been exercised with real transactions. It reuses the same Poseidon hasher and Groth16 verifier as the pool above (identical bytecode — no reason to redeploy).
+
+| Contract | Address | Explorer |
+|---|---|---|
+| ASPRegistry | `0x31e8819d87EFf6b851Fc904b148022dFC70f31D3` | [verified](https://sepolia.etherscan.io/address/0x31e8819d87EFf6b851Fc904b148022dFC70f31D3#code) |
+| PrivacyPoolMultiASP | `0xa84dbB140CF7d3cD0710E941D86Fc1969A89EA46` | [verified](https://sepolia.etherscan.io/address/0xa84dbB140CF7d3cD0710E941D86Fc1969A89EA46#code) |
+| FlaggedRegistry | `0x3213497CE314ffd784837e082F2752A7617AfbAD` | [verified](https://sepolia.etherscan.io/address/0x3213497CE314ffd784837e082F2752A7617AfbAD#code) |
+
+Two live proofs that it *works*, not just compiles:
+
+- **A fraud proof that slashed a dishonest ASP.** An ASP published a degenerate association set (a single leaf — which de-anonymizes its member); anyone could prove it on-chain with `challengeDegenerate`, and the challenger collected 50% of the stake, no governance involved. [tx `0x4d759e02…7827ae`](https://sepolia.etherscan.io/tx/0x4d759e0217ae7c4aa46cd0a75fd6f7dad4797a3e9266acb4137f1ff80b7827ae).
+- **A real ZK withdrawal against the multi-ASP pool.** The four fixture commitments were deposited (reproducing the exact state root), an honest ASP published the association root, and the *same* Groth16 proof used by the original pool verified against `PrivacyPoolMultiASP` when the user selects that ASP by `aspId` — and paid out. The decentralization does not touch the cryptography. [tx `0xbb5bb8ff…b39c3f`](https://sepolia.etherscan.io/tx/0xbb5bb8ffe272a981bc54744f2ca309c79ec33d2ba7ef50c53c544ff992b39c3f).
 
 ## Quickstart
 
