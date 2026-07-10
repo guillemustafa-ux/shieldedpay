@@ -213,7 +213,9 @@ distribution and audits.
 - **The high-leverage move is to build *on* the shared substrate** — e.g. an ASP
   implementation, a compliance-tooling layer, or a wallet integration on top of
   Privacy Pools / EIP-8182 — where you contribute to the large anonymity set instead
-  of splitting it.
+  of splitting it. **[`docs/DECENTRALIZED-ASP.md`](DECENTRALIZED-ASP.md)** works this
+  out in full: a five-layer architecture for a credibly-neutral, decentralized
+  Association Set Provider — the highest-leverage buildable component on the shared pool.
 
 ShieldedPay's value is therefore as *demonstrated understanding of the mechanism*, and
 the natural next project is not "ShieldedPay v2 the protocol" but "a component in the

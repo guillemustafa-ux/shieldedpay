@@ -4,6 +4,14 @@ Registro de corridas, decisiones autónomas y bloqueos. Lo más nuevo arriba.
 
 ---
 
+## 2026-07-10 — docs/DECENTRALIZED-ASP.md: diseño de un ASP descentralizado (trabajo Fable 5, elegido por Guille)
+
+- Guille pidió otra tarea de estructura pesada; eligió (de 3 opciones) "componente sobre el pool compartido" — coherente con la recomendación build-vs-integrate de ARCHITECTURE.md.
+- **`docs/DECENTRALIZED-ASP.md`** — blueprint del componente MÁS difícil y menos resuelto de Privacy Pools: descentralizar el Association Set Provider (hoy un Ownable / un operador central, incluso en 0xbow). Diseño en **5 capas** (construcción determinista del set por taint sobre el grafo público / data availability IPFS-Arweave-blobs / registry on-chain multi-ASP con root history / governance del flagging vía reglas públicas + attestations EAS + disputas / accountability con staking-slashing-reputación), flujo de usuario (elegir ASP), interfaz `IASPRegistry` (cambio de 2 líneas en el pool, circuito INTACTO), roadmap de descentralización progresiva, threat model específico, relación con EIP-8182/PSE/0xbow, y sección honesta de problemas abiertos (censura no-slashable, "dirty" objetivo, DA a escala, fragmentación del anonymity set).
+- Insight de arquitectura clave: la descentralización vive en QUÉ roots honra el pool (un registry lookup), NO en el circuito ZK — la criptografía difícil queda intacta. Linkeado desde ARCHITECTURE.md.
+- Es exactamente "el pedazo que un protocolo de privacy contrataría diseñar". Trabajo Fable puro, no delegado.
+- Commit: en esta corrida.
+
 ## 2026-07-09 — docs/ARCHITECTURE.md: diseño "de la demo a producción" (trabajo Fable 5, no delegado)
 
 - Guille pidió aprovechar Fable 5 en "algo pesado de estructura" mientras vuelve. Elegí un documento de arquitectura senior (diseño puro, no ejecución → no se delega a Sonnet), que suma sin ensuciar el código (no es sobre-ingeniería: es diseño documentado, honesto sobre qué falta).
@@ -110,4 +118,4 @@ Registro de corridas, decisiones autónomas y bloqueos. Lo más nuevo arriba.
 
 ### ⏸ PAUSA (pedido de Guille). Para retomar: D3 (Fase B parte 2 — PrivacyPool.sol + ASP.sol integrando el verifier, tests on-chain de depósito/retiro/double-spend, deploy Sepolia con OK). El harness `circuits/test/merkleTree.js` se reutiliza para armar los árboles en los tests de Foundry (vía FFI o precomputando inputs). Ver PLAN.md.
 
-[META-STATUS] 2026-07-10 | ESTADO=EN_DESARROLLO | Build completo (Fase A stealth + Fase B privacy pool ZK), 11 commits, 37 tests Foundry + 4 circuito verdes, dApp con proving en browser (3 tabs) + docs (THESIS/SECURITY/ARCHITECTURE) + reproducibilidad ZK. Falta SOLO deploy Sepolia+Vercel+push (espera .env de Guille — ver DEPLOY.md).
+[META-STATUS] 2026-07-10 | ESTADO=EN_DESARROLLO | Build completo (Fase A stealth + Fase B privacy pool ZK), 12 commits, 37 tests Foundry + 4 circuito verdes, dApp con proving en browser (3 tabs) + docs (THESIS/SECURITY/ARCHITECTURE/DECENTRALIZED-ASP) + reproducibilidad ZK. Falta SOLO deploy Sepolia+Vercel+push (espera .env de Guille — ver DEPLOY.md).
