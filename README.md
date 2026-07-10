@@ -6,11 +6,11 @@
 |---|---|
 | **Language** | Solidity 0.8.24 · Circom 2.1.6 |
 | **Tooling** | Foundry · snarkjs (Groth16) · circomlibjs (Poseidon) |
-| **Tests** | 36 Foundry (unit + fuzz + stateful invariant) · 4 circuit tests — all green |
+| **Tests** | 71 Foundry (unit + fuzz + stateful invariant) · 4 circuit tests — all green |
 | **Coverage** | Core contracts 97–100% lines (`PrivacyPool`, `ASP`, `ERC5564Announcer`, `ERC6538Registry` at 100%) |
 | **ZK circuit** | 21,735 constraints · Groth16 over BN254 · trusted setup from the public Hermez Powers of Tau |
 | **Frontend** | Vite + React + ethers v6 · **client-side proving** with snarkjs (wasm) |
-| **Networks** | Sepolia _(deploy pending — see below)_ |
+| **Networks** | Sepolia _(deployed & verified — see below)_ |
 
 ⚠️ **Educational / portfolio project. Not audited. Do not use with real funds.** See [`SECURITY.md`](SECURITY.md).
 
@@ -81,7 +81,7 @@ The [`frontend/dapp`](frontend/dapp) app (Vite + React + ethers v6) generates th
 ## Tests & invariants
 
 ```bash
-forge test -vv          # 36 tests: unit + fuzz + stateful invariant
+forge test -vv          # 71 tests: unit + fuzz + stateful invariant
 cd circuits && npm test  # 4 circuit tests (valid + 3 invalid cases)
 ```
 
@@ -90,6 +90,24 @@ Highlights:
 - **`test_Withdraw_ValidProof_PaysRecipient`** — a **real** Groth16 proof is verified on-chain and pays out.
 - **`test_Withdraw_RevertsIf_AssociationRootNotPublished`** — a deposit outside the clean set cannot withdraw (the compliance guarantee).
 - Plus double-spend, invalid-proof, unknown-root, and fee-bound reverts, and a stateful invariant (`pool balance == denomination × (deposits − withdrawals)`).
+
+## Decentralizing the ASP
+
+The single-owner ASP above is the honest demo boundary — and the most interesting place to push past it. This repo also contains a **decentralized ASP**, built as a working, tested implementation (**not deployed** — the Sepolia contracts below are the single-owner demo). The full design is in [`docs/DECENTRALIZED-ASP.md`](docs/DECENTRALIZED-ASP.md); the code is [`src/ASPRegistry.sol`](src/ASPRegistry.sol), [`src/PrivacyPoolMultiASP.sol`](src/PrivacyPoolMultiASP.sol), [`src/FlaggedRegistry.sol`](src/FlaggedRegistry.sol) and [`src/lib/PoseidonMerkleLib.sol`](src/lib/PoseidonMerkleLib.sol).
+
+The key idea: **the ZK circuit does not change.** Decentralization lives entirely in *which* association roots the pool honors — a registry lookup — not in the cryptography. The *same* real Groth16 proof verifies against both the original pool and the multi-ASP pool.
+
+Instead of one trusted owner, many Association Set Providers register with a **stake** and publish their own roots; a withdrawal picks the ASP it trusts. Each published root commits to its set via `dataHash = keccak256(set)`, which makes an ASP's honesty **provable on-chain**. Anyone can slash a lying ASP with a fraud proof (the challenger earns 50% of the stake; CEI + `nonReentrant`):
+
+| Fraud proof | Proves | Guarantees |
+|---|---|---|
+| `challengeIntegrity` | recomputed `Merkle(set) != root` published | the root *is* the tree of the committed set |
+| `challengeDegenerate` | `set.length < MIN_SET_SIZE` | the set doesn't de-anonymize its members |
+| `challengeInclusion` | a leaf of the set is flagged in the `FlaggedRegistry` | the "clean" set excludes what the rules exclude |
+
+They compose: an ASP that publishes the root of a dirty set but a `dataHash` of a clean one is caught by `challengeIntegrity` — there is no escape route. An honest ASP is unslashable, and no set can frame it (the challenger must supply the exact committed set, bound by `dataHash`). The **71 Foundry tests** cover each fraud proof, the successful slash, and every reject path.
+
+Honest boundaries (documented, not hidden): censorship / wrongful *exclusion* is **not** slashable (handled by multi-ASP exit, not a fraud proof), taint propagation is not recomputable on-chain (an off-chain attester publishes the flagging result into `FlaggedRegistry`), and the slice uses a single attester — per-ASP attester policies are the documented Layer 4 follow-up.
 
 ## Deployments (Sepolia)
 
@@ -137,7 +155,7 @@ cd frontend/dapp && npm install && npm run dev
 
 ## Security & honest scope
 
-This is a demonstration of a mechanism, not a product. The ASP is a single owner (not decentralized), anonymity depends on set size, and it has not been audited. The trust model, adversarial review, and **known residual risks** are documented candidly in **[`SECURITY.md`](SECURITY.md)** — being precise about the boundary is part of the work.
+This is a demonstration of a mechanism, not a product. The **deployed** pool uses a single-owner ASP; the repo also ships a decentralized-ASP implementation with on-chain fraud proofs (tested, not deployed — see [Decentralizing the ASP](#decentralizing-the-asp)). Anonymity depends on set size, and none of it has been audited. The trust model, adversarial review, and **known residual risks** are documented candidly in **[`SECURITY.md`](SECURITY.md)** — being precise about the boundary is part of the work.
 
 ## License
 
