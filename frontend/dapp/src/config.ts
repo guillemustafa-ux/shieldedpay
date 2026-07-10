@@ -15,8 +15,22 @@ const PLACEHOLDER = "0x0000000000000000000000000000000000000000";
 export const POOL_ADDRESS = (import.meta.env.VITE_POOL_ADDRESS ?? PLACEHOLDER).trim();
 export const ASP_ADDRESS = (import.meta.env.VITE_ASP_ADDRESS ?? PLACEHOLDER).trim();
 
+// Contratos de la Fase A (stealth addresses). Opcionales: la demo criptográfica
+// del tab Stealth corre 100% client-side sin ellos. Si se completan tras el
+// deploy, se habilitan los botones de registrar/anunciar on-chain.
+export const REGISTRY_ADDRESS = (import.meta.env.VITE_REGISTRY_ADDRESS ?? PLACEHOLDER).trim();
+export const ANNOUNCER_ADDRESS = (import.meta.env.VITE_ANNOUNCER_ADDRESS ?? PLACEHOLDER).trim();
+
 export function addressesConfigured(): boolean {
   return POOL_ADDRESS !== PLACEHOLDER && ASP_ADDRESS !== PLACEHOLDER;
+}
+
+export function registryConfigured(): boolean {
+  return REGISTRY_ADDRESS !== PLACEHOLDER;
+}
+
+export function announcerConfigured(): boolean {
+  return ANNOUNCER_ADDRESS !== PLACEHOLDER;
 }
 
 // ABI mínimo del PrivacyPool (formato human-readable de ethers v6).
@@ -38,6 +52,24 @@ export const ASP_ABI = [
   "function isKnownAssociationRoot(uint256 root) view returns (bool)",
   "event AssociationRootPublished(uint256 indexed root, uint256 timestamp)",
 ];
+
+// ABI mínimo del ERC6538Registry (Fase A). Extraído de
+// out/ERC6538Registry.sol/ERC6538Registry.json.
+export const REGISTRY_ABI = [
+  "function registerKeys(uint256 schemeId, bytes stealthMetaAddress)",
+  "function stealthMetaAddressOf(address registrant, uint256 schemeId) view returns (bytes)",
+  "event StealthMetaAddressSet(address indexed registrant, uint256 indexed schemeId, bytes stealthMetaAddress)",
+];
+
+// ABI mínimo del ERC5564Announcer (Fase A). Extraído de
+// out/ERC5564Announcer.sol/ERC5564Announcer.json.
+export const ANNOUNCER_ABI = [
+  "function announce(uint256 schemeId, address stealthAddress, bytes ephemeralPubKey, bytes metadata)",
+  "event Announcement(uint256 indexed schemeId, address indexed stealthAddress, address indexed caller, bytes ephemeralPubKey, bytes metadata)",
+];
+
+// schemeId 1 = secp256k1 (el único que implementa la lib de stealth).
+export const STEALTH_SCHEME_ID = 1;
 
 // Rutas de los artefactos ZK servidos como assets estáticos (public/zk/).
 export const ZK_WASM_URL = "/zk/withdraw.wasm";

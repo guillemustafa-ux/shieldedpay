@@ -3,9 +3,16 @@ import { useWallet } from "./hooks/useWallet";
 import { ConnectWallet } from "./components/ConnectWallet";
 import { DepositTab } from "./components/DepositTab";
 import { WithdrawTab } from "./components/WithdrawTab";
+import { StealthTab } from "./components/StealthTab";
 import { SEPOLIA_CHAIN_ID, addressesConfigured } from "./config";
 
-type Tab = "deposit" | "withdraw";
+type Tab = "deposit" | "withdraw" | "stealth";
+
+const TAB_LABELS: Record<Tab, string> = {
+  deposit: "Depositar",
+  withdraw: "Retirar",
+  stealth: "Stealth",
+};
 
 export default function App() {
   const wallet = useWallet();
@@ -97,7 +104,7 @@ export default function App() {
           ) : (
             <div className="rounded-xl border border-slate-800 bg-slate-900/40 overflow-hidden">
               <div className="flex border-b border-slate-800">
-                {(["deposit", "withdraw"] as Tab[]).map((t) => (
+                {(["deposit", "withdraw", "stealth"] as Tab[]).map((t) => (
                   <button
                     key={t}
                     onClick={() => setTab(t)}
@@ -107,12 +114,15 @@ export default function App() {
                         : "text-slate-500 hover:text-slate-300"
                     }`}
                   >
-                    {t === "deposit" ? "Depositar" : "Retirar"}
+                    {TAB_LABELS[t]}
                   </button>
                 ))}
               </div>
               <div className="p-5">
-                {wrongNetwork ? (
+                {tab === "stealth" ? (
+                  // La cripto de stealth corre 100% local; no requiere Sepolia.
+                  <StealthTab signer={wallet.signer!} />
+                ) : wrongNetwork ? (
                   <p className="text-sm text-slate-500 text-center py-6">
                     Cambiá a Sepolia para operar.
                   </p>

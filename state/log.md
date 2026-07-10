@@ -4,6 +4,15 @@ Registro de corridas, decisiones autónomas y bloqueos. Lo más nuevo arriba.
 
 ---
 
+## 2026-07-09 — Refuerzo C: tab de stealth en la dApp (diseño Fable / ejecución Sonnet) — auditado
+
+- **Diferencial #2 cerrado:** la dApp ahora tiene 3 tabs (Depositar / Retirar / **Stealth**) → cuenta "stealth + pool = un sistema de pagos privados", no dos demos sueltas.
+- **`src/lib/stealth.ts`** (port 1:1 de `js/stealth.js` a TS) + **`StealthTab.tsx`** (flujo didáctico Bob genera meta-address → Alice genera stealth address + ephemeral + view tag → Bob deriva la privkey y se verifica en pantalla que controla los fondos; botones opcionales Registrar/Anunciar on-chain si hay addresses de Fase A). Cripto 100% client-side.
+- **Cambio de dep (auditado):** subió `@noble/hashes` 1.3.2→2.2.0 y agregó `@noble/secp256k1@3.1.0` (mismas versiones que la lib de Fase A, para port idéntico). **Riesgo verificado por Fable:** re-corrí el smoke del pool → `PROOF OK` con raíz `19836...286003` IDÉNTICA → el bump NO afectó el Poseidon de circomlibjs. Descartado.
+- **Verificación:** `npm run build` exit 0; `npm run smoke:stealth` → `STEALTH OK` (criterio duro: `addressFromPrivateKey(computeStealthKey(...)) === stealthAddress` + escaneo por view tag + rechazo de tercero). Cross-check determinista TS vs JS de Fase A → resultados idénticos.
+- **Addresses Fase A por env:** `VITE_REGISTRY_ADDRESS`/`VITE_ANNOUNCER_ADDRESS` (placeholder fallback); sin ellas el tab funciona como demo cripto local completa.
+- Commit refuerzo C: en esta corrida (dominio frontend/).
+
 ## 2026-07-09 — Refuerzo A+B (diseño Fable / ejecución Sonnet) — auditado
 
 - **A — guard fee/relayer (hardening):** en `PrivacyPool.withdraw`, tras `fee <= denomination`, se agregó `require(relayer != address(0) || fee == 0, "fee > 0 requiere un relayer")`. Cierra el footgun documentado (fee atrapado si no hay relayer) → el invariante de balance vale universalmente. Test nuevo `test_Withdraw_RevertsIf_FeeWithoutRelayer`. **37/37 tests verdes** (era 36). Auditado por Fable: guard bien posicionado (antes de los checks de root/verify), ningún test previo roto.
