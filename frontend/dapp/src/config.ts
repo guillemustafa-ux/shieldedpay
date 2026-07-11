@@ -26,6 +26,13 @@ export const ASP_REGISTRY_ADDRESS = (
   import.meta.env.VITE_ASP_REGISTRY_ADDRESS ?? DEFAULT_ASP_REGISTRY
 ).trim();
 
+// Bloque en que se deployó el pool (Sepolia). fetchDeposits arranca acá —no
+// desde 0— y pagina, porque muchos RPCs limitan eth_getLogs a ~10k bloques por
+// consulta. Pisable por env si se redeploya el pool en otro bloque.
+export const POOL_DEPLOY_BLOCK = Number(
+  import.meta.env.VITE_POOL_DEPLOY_BLOCK ?? 11246403,
+);
+
 // Contratos de la Fase A (stealth addresses). La demo criptográfica del tab
 // Stealth corre 100% client-side; con las addresses se habilitan además los
 // botones de registrar/anunciar on-chain.

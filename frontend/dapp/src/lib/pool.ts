@@ -4,6 +4,7 @@ import { ethers } from "ethers";
 import {
   POOL_ADDRESS,
   POOL_ABI,
+  POOL_DEPLOY_BLOCK,
   ASP_REGISTRY_ADDRESS,
   ASP_REGISTRY_ABI,
 } from "../config";
@@ -57,23 +58,33 @@ export interface DepositRecord {
 // Lee TODOS los eventos Deposit del pool y devuelve los commitments ORDENADOS
 // por leafIndex (orden de inserción en el árbol). Así la dApp reconstruye el
 // árbol de estado idéntico al on-chain sin guardar estado propio.
+//
+// Escanea desde el bloque de deploy (no desde 0) y PAGINA en tramos ≤ CHUNK
+// bloques: muchos RPCs (el default de varias wallets incluido) limitan
+// eth_getLogs a ~10k bloques por consulta y rechazan un rango 0→latest.
 export async function fetchDeposits(
   provider: ethers.Provider,
 ): Promise<DepositRecord[]> {
   const pool = getPool(provider);
   const filter = pool.filters.Deposit();
-  const logs = await pool.queryFilter(filter, 0, "latest");
+  const latest = await provider.getBlockNumber();
+  const CHUNK = 9000; // margen bajo el límite típico de 10k.
 
-  const records: DepositRecord[] = logs.map((log) => {
-    const parsed = pool.interface.parseLog({
-      topics: [...log.topics],
-      data: log.data,
-    });
-    return {
-      commitment: BigInt(parsed!.args[0]),
-      leafIndex: Number(parsed!.args[1]),
-    };
-  });
+  const records: DepositRecord[] = [];
+  for (let from = POOL_DEPLOY_BLOCK; from <= latest; from += CHUNK) {
+    const to = Math.min(from + CHUNK - 1, latest);
+    const logs = await pool.queryFilter(filter, from, to);
+    for (const log of logs) {
+      const parsed = pool.interface.parseLog({
+        topics: [...log.topics],
+        data: log.data,
+      });
+      records.push({
+        commitment: BigInt(parsed!.args[0]),
+        leafIndex: Number(parsed!.args[1]),
+      });
+    }
+  }
 
   records.sort((a, b) => a.leafIndex - b.leafIndex);
   return records;
