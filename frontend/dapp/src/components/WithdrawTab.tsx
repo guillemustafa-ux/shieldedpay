@@ -1,9 +1,9 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { ethers } from "ethers";
 import { parseNote } from "../lib/note";
 import { commitmentOf } from "../lib/merkleTree";
 import { buildWithdrawInput, proveWithdraw } from "../lib/zk";
-import { fetchDeposits, getPool } from "../lib/pool";
+import { fetchDeposits, getPool, getRegistry, fetchAsps, type AspInfo } from "../lib/pool";
 import { ZK_WASM_URL, ZK_ZKEY_URL, EXPLORER } from "../config";
 
 interface Props {
@@ -14,6 +14,16 @@ interface Props {
 
 type Step = "idle" | "loading" | "proving" | "sending" | "done";
 
+function shortAddr(a: string): string {
+  return `${a.slice(0, 6)}…${a.slice(-4)}`;
+}
+
+function shortRoot(r: bigint): string {
+  if (r === 0n) return "sin root publicada";
+  const hex = r.toString(16);
+  return `0x${hex.slice(0, 6)}…${hex.slice(-4)}`;
+}
+
 export function WithdrawTab({ signer, provider, account }: Props) {
   const [noteRaw, setNoteRaw] = useState("");
   const [recipient, setRecipient] = useState(account);
@@ -22,10 +32,38 @@ export function WithdrawTab({ signer, provider, account }: Props) {
   const [txHash, setTxHash] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // Lista de ASPs del registry y el elegido por el usuario.
+  const [asps, setAsps] = useState<AspInfo[] | null>(null);
+  const [selectedAspId, setSelectedAspId] = useState<number | null>(null);
+
+  // Cargar los ASPs del registry al montar: el usuario elige contra cuál validar.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const list = await fetchAsps(provider);
+        if (cancelled) return;
+        setAsps(list);
+        // Pre-seleccionar el primer ASP activo con una root publicada.
+        const firstUsable = list.find((a) => a.active && a.latestRoot !== 0n);
+        if (firstUsable) setSelectedAspId(firstUsable.id);
+      } catch {
+        if (!cancelled) setAsps([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [provider]);
+
   async function handleWithdraw() {
     try {
       setError(null);
       setTxHash(null);
+
+      if (selectedAspId === null) {
+        throw new Error("Elegí un ASP activo contra el que validar tu retiro.");
+      }
 
       // 1. Parsear la nota (secreto del usuario, nunca sale de la máquina).
       const note = parseNote(noteRaw);
@@ -64,12 +102,22 @@ export function WithdrawTab({ signer, provider, account }: Props) {
         fee,
       });
 
+      // 4b. El pool exige que el ASP elegido haya publicado ESTA associationRoot.
+      // Lo validamos ANTES de gastar tiempo probando, para dar feedback claro.
+      const registry = getRegistry(provider);
+      const known = await registry.isKnownRoot(selectedAspId, BigInt(input.associationRoot));
+      if (!known) {
+        throw new Error(
+          `El ASP #${selectedAspId} no publicó la root actual del pool. Elegí un ASP que la haya publicado, o pedí que se publique la root vigente.`,
+        );
+      }
+
       // 5. Generar la prueba ZK EN EL BROWSER.
       setStep("proving");
       setStatusMsg("Generando prueba ZK en tu navegador… (puede tardar)");
       const proof = await proveWithdraw(input, ZK_WASM_URL, ZK_ZKEY_URL);
 
-      // 6. Enviar el retiro on-chain.
+      // 6. Enviar el retiro on-chain, seleccionando el ASP elegido (aspId).
       setStep("sending");
       setStatusMsg("Confirmá el retiro en la wallet…");
       const pool = getPool(signer);
@@ -83,6 +131,7 @@ export function WithdrawTab({ signer, provider, account }: Props) {
         recipient,
         relayer,
         fee,
+        selectedAspId,
       );
       const receipt = await tx.wait();
       setTxHash(receipt.hash);
@@ -99,11 +148,72 @@ export function WithdrawTab({ signer, provider, account }: Props) {
   return (
     <div className="space-y-5">
       <p className="text-sm text-slate-400">
-        Pegás tu nota. La dApp reconstruye el árbol del pool desde los eventos
-        on-chain, arma la prueba de que tu depósito pertenece al set —{" "}
+        Pegás tu nota y <strong>elegís el ASP</strong> contra el que querés
+        validar tu retiro. La dApp reconstruye el árbol del pool desde los
+        eventos on-chain, arma la prueba de que tu depósito pertenece al set —{" "}
         <strong>generándola en tu propio navegador</strong> — y ejecuta el
         retiro. El secreto nunca sale de tu máquina.
       </p>
+
+      {/* Selector de ASP: la lista real del registry on-chain. */}
+      <div className="space-y-2">
+        <span className="text-sm text-slate-300">Association Set Provider</span>
+        {asps === null ? (
+          <div className="text-xs text-slate-500">Leyendo ASPs del registry…</div>
+        ) : asps.length === 0 ? (
+          <div className="text-xs text-slate-500">
+            No hay ASPs registrados en el registry.
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {asps.map((asp) => {
+              const usable = asp.active && asp.latestRoot !== 0n;
+              const selected = asp.id === selectedAspId;
+              return (
+                <button
+                  key={asp.id}
+                  onClick={() => usable && setSelectedAspId(asp.id)}
+                  disabled={!usable || busy}
+                  className={`w-full text-left rounded-lg border p-3 transition-colors ${
+                    selected
+                      ? "border-indigo-500 bg-indigo-500/10"
+                      : usable
+                        ? "border-slate-700 bg-slate-900/50 hover:border-slate-500 cursor-pointer"
+                        : "border-red-500/30 bg-red-500/5 opacity-70 cursor-not-allowed"
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-slate-200">
+                      ASP #{asp.id}{" "}
+                      <span className="font-mono text-xs text-slate-500">
+                        {shortAddr(asp.owner)}
+                      </span>
+                    </span>
+                    {asp.slashed ? (
+                      <span className="text-[10px] uppercase tracking-wider text-red-300 border border-red-500/40 rounded px-1.5 py-0.5">
+                        Slashed
+                      </span>
+                    ) : (
+                      <span className="text-[10px] uppercase tracking-wider text-emerald-300 border border-emerald-500/40 rounded px-1.5 py-0.5">
+                        Activo
+                      </span>
+                    )}
+                  </div>
+                  <div className="mt-1 flex items-center gap-3 text-xs text-slate-500">
+                    <span>stake {ethers.formatEther(asp.stake)} ETH</span>
+                    <span className="font-mono">root {shortRoot(asp.latestRoot)}</span>
+                  </div>
+                </button>
+              );
+            })}
+            <p className="text-[11px] text-slate-600">
+              Un ASP <span className="text-red-300">slashed</span> fue penalizado
+              por un fraud proof on-chain y no se puede elegir. El pool valida tu
+              retiro contra el ASP que elijas (<code className="font-mono">aspId</code>).
+            </p>
+          </div>
+        )}
+      </div>
 
       <div className="space-y-3">
         <label className="block text-sm">
@@ -131,7 +241,7 @@ export function WithdrawTab({ signer, provider, account }: Props) {
 
       <button
         onClick={handleWithdraw}
-        disabled={busy || !noteRaw.trim()}
+        disabled={busy || !noteRaw.trim() || selectedAspId === null}
         className="w-full py-3 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold transition-colors cursor-pointer flex items-center justify-center gap-2"
       >
         {busy && (

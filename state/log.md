@@ -4,6 +4,15 @@ Registro de corridas, decisiones autónomas y bloqueos. Lo más nuevo arriba.
 
 ---
 
+## 2026-07-10 — dApp integrada al pool multi-ASP con selector de ASP ("hacelo")
+
+- Guille: "hacelo" (sobre integrar la dApp al multi-ASP para que la UI muestre la elección de ASP). Cambio de frontend hecho por Fable directamente (no subagente).
+- **`config.ts`**: DEFAULT_POOL → PrivacyPoolMultiASP `0xa84dbB14...`, nuevo `ASP_REGISTRY_ADDRESS` `0x31e8819d...` + `ASP_REGISTRY_ABI` (nextAspId/asps/isActive/isKnownRoot), `POOL_ABI.withdraw` con `aspId` (10 args). **`lib/pool.ts`**: `getRegistry()` + `fetchAsps()` (enumera ids 1..nextAspId-1 con owner/stake/slashed/active/latestRoot). **`WithdrawTab.tsx`**: selector de ASP (lista real del registry on-chain; los SLASHED se muestran y NO se pueden elegir), valida `isKnownRoot(aspId, associationRoot)` ANTES de probar (feedback claro), pasa `aspId` al withdraw. **`App.tsx`**: nota de UI reencuadrada (registry con staking+slashing; simplificación assoc==state explícita). vite-env.d.ts actualizado.
+- **Limitación honesta documentada en la UI:** la dApp usa assoc==state (todos los depósitos = set limpio), así que el selector demuestra la MECÁNICA (elegís ASP → aspId → el pool valida contra ese ASP; un slashed no es elegible) pero no sets de asociación distintos por ASP (eso vive en los tests de contratos).
+- **Verificación objetiva:** `npm run build` (tsc --noEmit + vite build) VERDE, sin errores de tipos. Sin referencias huérfanas a getASP/ASP_ADDRESS/ASP_ABI.
+- **Demo self-service sembrada on-chain:** se depositó una nota con secreto conocido (nullifier=42, secret=4242 → commitment vía Poseidon), la nueva state root `R5=17229411...` la publicó el ASP honesto #2, `isKnownRoot(2,R5)=true`. La nota (`shieldedpay-note-v1-...02a-...1092`) está en el README para que un visitante ejerza el retiro ZK completo desde la dApp eligiendo el ASP #2.
+- Balance final 0.0069 ETH. Commit + push. **Redeploy de Vercel = Guille** (la dApp en vivo apunta al pool viejo hasta que reconstruya; addresses nuevas son defaults en config.ts, cero env vars).
+
 ## 2026-07-10 — ASP descentralizado DEPLOYADO en Sepolia + demos reales on-chain ("todo lo quiero onchain")
 
 - Guille: "todo lo quiero onchain". Se llevó el ASP descentralizado de tested a **evidencia on-chain citable**. Deploy con `script/DeployMultiASP.s.sol`, ejecución supervisada tx-por-tx por Fable (balance ajustado 0.0249 ETH → decisiones de gas reales, no delegado).
@@ -153,4 +162,4 @@ Registro de corridas, decisiones autónomas y bloqueos. Lo más nuevo arriba.
 
 ### ⏸ PAUSA (pedido de Guille). Para retomar: D3 (Fase B parte 2 — PrivacyPool.sol + ASP.sol integrando el verifier, tests on-chain de depósito/retiro/double-spend, deploy Sepolia con OK). El harness `circuits/test/merkleTree.js` se reutiliza para armar los árboles en los tests de Foundry (vía FFI o precomputando inputs). Ver PLAN.md.
 
-[META-STATUS] 2026-07-10 | ESTADO=OPERATIVO | DESPLEGADO en Sepolia y repo PÚBLICO github.com/guillemustafa-ux/shieldedpay. 71 tests Foundry + 4 circuito verdes. Fase A stealth + Fase B privacy pool ZK (6 contratos verificados + retiro ZK E2E real) + dApp proving en browser + docs (THESIS/SECURITY/ARCHITECTURE/DECENTRALIZED-ASP) + **ASP DESCENTRALIZADO deployado on-chain**: ASPRegistry multi-ASP + PrivacyPoolMultiASP + FlaggedRegistry verificados, con LOS TRES fraud proofs (integrity+degenerate+inclusion) y evidencia real citable — SLASH tx 0x4d759e02 (challenger cobró 50%) + retiro ZK multi-ASP tx 0xbb5bb8ff (misma prueba Groth16, aspId selector). Falta SOLO dApp a Vercel (Guille).
+[META-STATUS] 2026-07-10 | ESTADO=OPERATIVO | DESPLEGADO en Sepolia y repo PÚBLICO github.com/guillemustafa-ux/shieldedpay. 71 tests Foundry + 4 circuito verdes; dApp build verde. Fase A stealth + Fase B privacy pool ZK (6 contratos verificados + retiro ZK E2E real) + docs (THESIS/SECURITY/ARCHITECTURE/DECENTRALIZED-ASP) + **ASP DESCENTRALIZADO deployado on-chain** (ASPRegistry+PrivacyPoolMultiASP+FlaggedRegistry verificados, LOS TRES fraud proofs; SLASH tx 0x4d759e02 + retiro ZK multi-ASP tx 0xbb5bb8ff) + **dApp integrada al pool multi-ASP con selector de ASP** (lee el registry on-chain, slashed no elegible, pasa aspId; nota demo self-service sembrada). Falta SOLO redeploy de la dApp a Vercel (Guille).

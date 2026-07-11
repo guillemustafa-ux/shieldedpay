@@ -1,14 +1,52 @@
-// Interacción on-chain con el PrivacyPool y el ASP.
+// Interacción on-chain con el PrivacyPoolMultiASP y el ASPRegistry.
 
 import { ethers } from "ethers";
-import { POOL_ADDRESS, POOL_ABI, ASP_ADDRESS, ASP_ABI } from "../config";
+import {
+  POOL_ADDRESS,
+  POOL_ABI,
+  ASP_REGISTRY_ADDRESS,
+  ASP_REGISTRY_ABI,
+} from "../config";
 
 export function getPool(runner: ethers.ContractRunner): ethers.Contract {
   return new ethers.Contract(POOL_ADDRESS, POOL_ABI, runner);
 }
 
-export function getASP(runner: ethers.ContractRunner): ethers.Contract {
-  return new ethers.Contract(ASP_ADDRESS, ASP_ABI, runner);
+export function getRegistry(runner: ethers.ContractRunner): ethers.Contract {
+  return new ethers.Contract(ASP_REGISTRY_ADDRESS, ASP_REGISTRY_ABI, runner);
+}
+
+// Un ASP del registry, tal como lo muestra el selector de la dApp.
+export interface AspInfo {
+  id: number;
+  owner: string;
+  stake: bigint;
+  slashed: boolean;
+  active: boolean;
+  latestRoot: bigint;
+}
+
+// Enumera los ASPs registrados (ids 1..nextAspId-1) con su estado. Así el
+// usuario ve la lista real del registry on-chain — incluidos los SLASHED, que
+// no se pueden elegir — sin que la dApp guarde estado propio.
+export async function fetchAsps(provider: ethers.Provider): Promise<AspInfo[]> {
+  const registry = getRegistry(provider);
+  const next = Number(await registry.nextAspId());
+
+  const asps: AspInfo[] = [];
+  for (let id = 1; id < next; id++) {
+    const info = await registry.asps(id);
+    const active = await registry.isActive(id);
+    asps.push({
+      id,
+      owner: String(info.owner),
+      stake: BigInt(info.stake),
+      slashed: Boolean(info.slashed),
+      active,
+      latestRoot: BigInt(info.latestRoot),
+    });
+  }
+  return asps;
 }
 
 export interface DepositRecord {

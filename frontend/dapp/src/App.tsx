@@ -56,17 +56,21 @@ export default function App() {
           {!configured && (
             <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-200">
               Configurá <code className="font-mono">VITE_POOL_ADDRESS</code> y{" "}
-              <code className="font-mono">VITE_ASP_ADDRESS</code> con las
-              direcciones desplegadas en Sepolia. Sin esto, las operaciones
+              <code className="font-mono">VITE_ASP_REGISTRY_ADDRESS</code> con
+              las direcciones desplegadas en Sepolia. Sin esto, las operaciones
               on-chain no van a funcionar.
             </div>
           )}
 
-          {/* Nota sobre la simplificación de demo del ASP */}
+          {/* Nota sobre el multi-ASP y la simplificación de demo */}
           <div className="rounded-lg border border-slate-700 bg-slate-900/50 p-3 text-xs text-slate-500">
-            En esta demo el ASP incluye todos los depósitos en el set limpio. El
-            mecanismo de exclusión (rechazar depósitos marcados) está ejercitado
-            en los tests de los contratos, no en el happy-path de la dApp.
+            El retiro se valida contra el <strong>ASP que elegís</strong> en un
+            registry descentralizado con staking + slashing: un ASP penalizado
+            por un fraud proof on-chain aparece como <em>slashed</em> y no se
+            puede elegir. Simplificación de demo: el set de asociación incluye
+            todos los depósitos (association root = state root); construir sets
+            distintos por ASP y el marcado de depósitos están ejercitados en los
+            tests de los contratos, no en el happy-path de la dApp.
           </div>
 
           {/* Aviso de red equivocada */}

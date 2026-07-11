@@ -78,6 +78,8 @@ The trusted setup reuses `powersOfTau28_hez_final_15.ptau` from the public Herme
 
 The [`frontend/dapp`](frontend/dapp) app (Vite + React + ethers v6) generates the Groth16 withdrawal proof **in the browser** with snarkjs (wasm): it reconstructs the Merkle tree from on-chain `Deposit` events, builds the paths, and proves locally. The `(nullifier, secret)` never leaves the user's device — this is the whole point of client-side proving, and it's rarely shown in portfolio pieces.
 
+The dApp points at the **decentralized pool** (`PrivacyPoolMultiASP`): the withdraw tab reads the `ASPRegistry` on-chain and lets the user **pick which ASP** to validate against — a slashed provider shows up as such and can't be selected — then passes that `aspId` to the withdrawal. (Demo simplification, stated in the UI: the association set is all deposits, so `associationRoot == root`; building distinct per-ASP sets is exercised in the contract tests, not the dApp happy-path.)
+
 ## Tests & invariants
 
 ```bash
@@ -152,6 +154,12 @@ Two live proofs that it *works*, not just compiles:
 
 - **A fraud proof that slashed a dishonest ASP.** An ASP published a degenerate association set (a single leaf — which de-anonymizes its member); anyone could prove it on-chain with `challengeDegenerate`, and the challenger collected 50% of the stake, no governance involved. [tx `0x4d759e02…7827ae`](https://sepolia.etherscan.io/tx/0x4d759e0217ae7c4aa46cd0a75fd6f7dad4797a3e9266acb4137f1ff80b7827ae).
 - **A real ZK withdrawal against the multi-ASP pool.** The four fixture commitments were deposited (reproducing the exact state root), an honest ASP published the association root, and the *same* Groth16 proof used by the original pool verified against `PrivacyPoolMultiASP` when the user selects that ASP by `aspId` — and paid out. The decentralization does not touch the cryptography. [tx `0xbb5bb8ff…b39c3f`](https://sepolia.etherscan.io/tx/0xbb5bb8ffe272a981bc54744f2ca309c79ec33d2ba7ef50c53c544ff992b39c3f).
+
+A demo note was seeded so anyone can exercise a full ZK withdraw from the dApp (pick the active ASP #2, paste the note, prove in-browser):
+
+```
+shieldedpay-note-v1-000000000000000000000000000000000000000000000000000000000000002a-0000000000000000000000000000000000000000000000000000000000001092
+```
 
 ## Quickstart
 

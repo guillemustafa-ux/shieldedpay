@@ -14,7 +14,7 @@ interface Window {
 
 interface ImportMetaEnv {
   readonly VITE_POOL_ADDRESS?: string;
-  readonly VITE_ASP_ADDRESS?: string;
+  readonly VITE_ASP_REGISTRY_ADDRESS?: string;
 }
 
 interface ImportMeta {
