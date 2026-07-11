@@ -11,7 +11,8 @@ Registro de corridas, decisiones autónomas y bloqueos. Lo más nuevo arriba.
 - **Limitación honesta documentada en la UI:** la dApp usa assoc==state (todos los depósitos = set limpio), así que el selector demuestra la MECÁNICA (elegís ASP → aspId → el pool valida contra ese ASP; un slashed no es elegible) pero no sets de asociación distintos por ASP (eso vive en los tests de contratos).
 - **Verificación objetiva:** `npm run build` (tsc --noEmit + vite build) VERDE, sin errores de tipos. Sin referencias huérfanas a getASP/ASP_ADDRESS/ASP_ABI.
 - **Demo self-service sembrada on-chain:** se depositó una nota con secreto conocido (nullifier=42, secret=4242 → commitment vía Poseidon), la nueva state root `R5=17229411...` la publicó el ASP honesto #2, `isKnownRoot(2,R5)=true`. La nota (`shieldedpay-note-v1-...02a-...1092`) está en el README para que un visitante ejerza el retiro ZK completo desde la dApp eligiendo el ASP #2.
-- Balance final 0.0069 ETH. Commit + push. **Redeploy de Vercel = Guille** (la dApp en vivo apunta al pool viejo hasta que reconstruya; addresses nuevas son defaults en config.ts, cero env vars).
+- Balance final 0.0069 ETH. Commit + push. Vercel auto-deployó (commit e68589c Ready); Guille verificó el selector en vivo (ASP #1 Slashed stake 0.0 root 0x3e7=999, ASP #2 Activo).
+- **FIX post-deploy (commit c833cc3):** el retiro desde la dApp fallaba con `range 11246681 exceeds limit of 10000` — `fetchDeposits` pedía eventos Deposit desde bloque 0 a latest en UNA consulta y muchos RPCs limitan eth_getLogs a ~10k bloques (bug heredado del pool original). Fix: `POOL_DEPLOY_BLOCK=11246403` en config + `fetchDeposits` pagina en tramos de 9000 bloques. Build verde. **Lección:** nunca `queryFilter(filter, 0, "latest")` en dApp; arrancar en el bloque de deploy y paginar.
 
 ## 2026-07-10 — ASP descentralizado DEPLOYADO en Sepolia + demos reales on-chain ("todo lo quiero onchain")
 
